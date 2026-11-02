@@ -5,6 +5,9 @@ import { AppController } from './app.controller.js';
 import { AppService } from './app.service.js';
 import { PrismaModule } from './prisma/prisma.module.js';
 import { AuthModule } from './auth/auth.module.js';
+import { CategoriesModule } from './categories/categories.module.js';
+import { ProductsModule } from './products/products.module.js';
+import { SalesModule } from './sales/sales.module.js';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard.js';
 import { RolesGuard } from './auth/guards/roles.guard.js';
 import { TenantGuard } from './auth/guards/tenant.guard.js';
@@ -27,6 +30,9 @@ import { TenantContextInterceptor } from './auth/interceptors/tenant-context.int
     ]),
     PrismaModule,
     AuthModule,
+    CategoriesModule,
+    ProductsModule,
+    SalesModule,
   ],
   controllers: [AppController],
   providers: [
