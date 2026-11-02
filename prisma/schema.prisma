@@ -1,0 +1,332 @@
+datasource db {
+  provider = "postgresql"
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// ==========================================
+// ENUMS
+// ==========================================
+
+enum UserRole {
+  MERCHANT
+  ADMIN
+}
+
+enum SyncStatus {
+  APPLIED
+  DUPLICATE
+  REJECTED
+}
+
+enum StockMovementType {
+  SALE
+  PURCHASE_ENTRY
+  MANUAL_ADJUST
+  INVENTORY_LOSS
+}
+
+enum PaymentMethod {
+  CASH
+  MOMO
+  CREDIT
+  SPLIT
+}
+
+enum SaleStatus {
+  COMPLETED
+  CANCELLED
+}
+
+enum PurchaseStatus {
+  ORDERED
+  PARTIALLY_RECEIVED
+  COMPLETED
+}
+
+// ==========================================
+// 1. DOMAINE COMPTE, SÉCURITÉ & MULTI-COMMERCE (PALIER P0)
+// ==========================================
+
+model users {
+  id             String   @id @default(uuid()) @db.Uuid
+  phone          String   @unique @db.VarChar(20)
+  password_hash  String   @db.VarChar(255)
+  email_recovery String?  @db.VarChar(120)
+  role           UserRole @default(MERCHANT)
+  refresh_token  String?  @db.VarChar(255)
+  created_at     DateTime @default(now()) @db.Timestamp(6)
+  updated_at     DateTime @default(now()) @updatedAt @db.Timestamp(6)
+
+  commerce   commerces?
+  audit_logs audit_logs[]
+}
+
+model commerces {
+  id                String   @id @default(uuid()) @db.Uuid
+  user_id           String   @unique @db.Uuid
+  name              String   @db.VarChar(100)
+  slug              String   @unique @db.VarChar(60)
+  whatsapp_number   String   @db.VarChar(20)
+  logo_url          String?  @db.Text
+  primary_color     String   @default("#1e40af") @db.VarChar(7)
+  secondary_color   String   @default("#f59e0b") @db.VarChar(7)
+  show_views_public Boolean  @default(false)
+  created_at        DateTime @default(now()) @db.Timestamp(6)
+  updated_at        DateTime @default(now()) @updatedAt @db.Timestamp(6)
+
+  user                users                 @relation(fields: [user_id], references: [id])
+  sync_operations     sync_operations[]
+  categories          categories[]
+  products            products[]
+  stock_movements     stock_movements[]
+  sales               sales[]
+  customers           customers[]
+  customer_repayments customer_repayments[]
+  cash_sessions       cash_sessions[]
+  suppliers           suppliers[]
+  purchases           purchases[]
+  expenses            expenses[]
+}
+
+model sync_operations {
+  client_op_uuid String     @id @db.Uuid
+  commerce_id    String     @db.Uuid
+  action_type    String     @db.VarChar(40)
+  status         SyncStatus @default(APPLIED)
+  created_at     DateTime   @default(now()) @db.Timestamp(6)
+  updated_at     DateTime   @default(now()) @updatedAt @db.Timestamp(6)
+
+  commerce commerces @relation(fields: [commerce_id], references: [id])
+
+  @@index([commerce_id])
+}
+
+// ==========================================
+// 2. DOMAINE PRODUITS, UNITÉS & GRAND LIVRE DE STOCK (PALIER P0)
+// ==========================================
+
+model categories {
+  id          String   @id @default(uuid()) @db.Uuid
+  commerce_id String   @db.Uuid
+  name        String   @db.VarChar(80)
+  created_at  DateTime @default(now()) @db.Timestamp(6)
+  updated_at  DateTime @default(now()) @updatedAt @db.Timestamp(6)
+
+  commerce commerces  @relation(fields: [commerce_id], references: [id])
+  products products[]
+
+  @@index([commerce_id])
+}
+
+model products {
+  id                 String   @id @default(uuid()) @db.Uuid
+  commerce_id        String   @db.Uuid
+  category_id        String?  @db.Uuid
+  name               String   @db.VarChar(120)
+  image_url          String?  @db.Text
+  default_cost_price Int      @default(0)
+  is_visible_public  Boolean  @default(true)
+  views_count        Int      @default(0)
+  is_archived        Boolean  @default(false)
+  created_at         DateTime @default(now()) @db.Timestamp(6)
+  updated_at         DateTime @default(now()) @updatedAt @db.Timestamp(6)
+
+  commerce        commerces         @relation(fields: [commerce_id], references: [id])
+  category        categories?       @relation(fields: [category_id], references: [id])
+  product_units   product_units[]
+  stock_movements stock_movements[]
+  sale_items      sale_items[]
+
+  @@index([commerce_id])
+  @@index([category_id])
+}
+
+model product_units {
+  id                String   @id @default(uuid()) @db.Uuid
+  product_id        String   @db.Uuid
+  label             String   @db.VarChar(50)
+  conversion_factor Decimal  @default(1.000) @db.Decimal(14, 3)
+  retail_price      Int
+  wholesale_price   Int?
+  is_base_unit      Boolean  @default(false)
+  created_at        DateTime @default(now()) @db.Timestamp(6)
+  updated_at        DateTime @default(now()) @updatedAt @db.Timestamp(6)
+
+  product products @relation(fields: [product_id], references: [id])
+
+  @@index([product_id])
+}
+
+model stock_movements {
+  id             String            @id @default(uuid()) @db.Uuid
+  commerce_id    String            @db.Uuid
+  product_id     String            @db.Uuid
+  type           StockMovementType
+  quantity_delta Decimal           @db.Decimal(14, 3)
+  reason         String?           @db.VarChar(150)
+  created_at     DateTime          @default(now()) @db.Timestamp(6)
+  updated_at     DateTime          @default(now()) @updatedAt @db.Timestamp(6)
+
+  commerce commerces @relation(fields: [commerce_id], references: [id])
+  product  products  @relation(fields: [product_id], references: [id])
+
+  @@index([commerce_id])
+  @@index([product_id])
+}
+
+// ==========================================
+// 3. DOMAINE CAISSE, VENTES COMPTOIR & DETTES CLIENTS (PALIER P0)
+// ==========================================
+
+model sales {
+  id             String        @id @default(uuid()) @db.Uuid
+  commerce_id    String        @db.Uuid
+  customer_id    String?       @db.Uuid
+  total_amount   Int
+  amount_paid    Int
+  debt_amount    Int           @default(0)
+  payment_method PaymentMethod
+  status         SaleStatus    @default(COMPLETED)
+  created_at     DateTime      @default(now()) @db.Timestamp(6)
+  updated_at     DateTime      @default(now()) @updatedAt @db.Timestamp(6)
+
+  commerce commerces    @relation(fields: [commerce_id], references: [id])
+  customer customers?   @relation(fields: [customer_id], references: [id])
+  items    sale_items[]
+
+  @@index([commerce_id])
+  @@index([customer_id])
+}
+
+model sale_items {
+  id                   String   @id @default(uuid()) @db.Uuid
+  sale_id              String   @db.Uuid
+  product_id           String   @db.Uuid
+  quantity             Decimal  @db.Decimal(14, 3)
+  unit_label_snapshot  String   @db.VarChar(50)
+  conversion_rate_snap Decimal  @db.Decimal(14, 3)
+  unit_price_snapshot  Int
+  cost_price_snapshot  Int
+  subtotal             Int
+  created_at           DateTime @default(now()) @db.Timestamp(6)
+  updated_at           DateTime @default(now()) @updatedAt @db.Timestamp(6)
+
+  sale    sales    @relation(fields: [sale_id], references: [id], onDelete: Cascade)
+  product products @relation(fields: [product_id], references: [id])
+
+  @@index([sale_id])
+  @@index([product_id])
+}
+
+model customers {
+  id               String   @id @default(uuid()) @db.Uuid
+  commerce_id      String   @db.Uuid
+  full_name        String   @db.VarChar(100)
+  phone            String   @db.VarChar(20)
+  outstanding_debt Int      @default(0)
+  created_at       DateTime @default(now()) @db.Timestamp(6)
+  updated_at       DateTime @default(now()) @updatedAt @db.Timestamp(6)
+
+  commerce   commerces             @relation(fields: [commerce_id], references: [id])
+  sales      sales[]
+  repayments customer_repayments[]
+
+  @@index([commerce_id])
+}
+
+model customer_repayments {
+  id             String        @id @default(uuid()) @db.Uuid
+  commerce_id    String        @db.Uuid
+  customer_id    String        @db.Uuid
+  amount         Int
+  payment_method PaymentMethod
+  created_at     DateTime      @default(now()) @db.Timestamp(6)
+  updated_at     DateTime      @default(now()) @updatedAt @db.Timestamp(6)
+
+  commerce commerces @relation(fields: [commerce_id], references: [id])
+  customer customers @relation(fields: [customer_id], references: [id])
+
+  @@index([commerce_id])
+  @@index([customer_id])
+}
+
+// ==========================================
+// 4. CLÔTURE DE CAISSE, FOURNISSEURS & TRAÇABILITÉ (PALIER P1)
+// ==========================================
+
+model cash_sessions {
+  id                  String    @id @default(uuid()) @db.Uuid
+  commerce_id         String    @db.Uuid
+  opening_amount      Int
+  theoretical_cash    Int
+  actual_cash_counted Int?
+  discrepancy_amount  Int?
+  closed_at           DateTime? @db.Timestamp(6)
+  created_at          DateTime  @default(now()) @db.Timestamp(6)
+  updated_at          DateTime  @default(now()) @updatedAt @db.Timestamp(6)
+
+  commerce commerces @relation(fields: [commerce_id], references: [id])
+
+  @@index([commerce_id])
+}
+
+model suppliers {
+  id               String   @id @default(uuid()) @db.Uuid
+  commerce_id      String   @db.Uuid
+  name             String   @db.VarChar(100)
+  phone            String?  @db.VarChar(20)
+  outstanding_debt Int      @default(0)
+  created_at       DateTime @default(now()) @db.Timestamp(6)
+  updated_at       DateTime @default(now()) @updatedAt @db.Timestamp(6)
+
+  commerce  commerces   @relation(fields: [commerce_id], references: [id])
+  purchases purchases[]
+
+  @@index([commerce_id])
+}
+
+model purchases {
+  id          String         @id @default(uuid()) @db.Uuid
+  commerce_id String         @db.Uuid
+  supplier_id String         @db.Uuid
+  total_cost  Int
+  amount_paid Int
+  status      PurchaseStatus @default(ORDERED)
+  created_at  DateTime       @default(now()) @db.Timestamp(6)
+  updated_at  DateTime       @default(now()) @updatedAt @db.Timestamp(6)
+
+  commerce commerces @relation(fields: [commerce_id], references: [id])
+  supplier suppliers @relation(fields: [supplier_id], references: [id])
+
+  @@index([commerce_id])
+  @@index([supplier_id])
+}
+
+model expenses {
+  id          String   @id @default(uuid()) @db.Uuid
+  commerce_id String   @db.Uuid
+  category    String   @db.VarChar(50)
+  amount      Int
+  created_at  DateTime @default(now()) @db.Timestamp(6)
+  updated_at  DateTime @default(now()) @updatedAt @db.Timestamp(6)
+
+  commerce commerces @relation(fields: [commerce_id], references: [id])
+
+  @@index([commerce_id])
+}
+
+model audit_logs {
+  id         String   @id @default(uuid()) @db.Uuid
+  user_id    String?  @db.Uuid
+  event_type String   @db.VarChar(50)
+  details    Json     @db.JsonB
+  created_at DateTime @default(now()) @db.Timestamp(6)
+  updated_at DateTime @default(now()) @updatedAt @db.Timestamp(6)
+
+  user users? @relation(fields: [user_id], references: [id])
+
+  @@index([user_id])
+}
