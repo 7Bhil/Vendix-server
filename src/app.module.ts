@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { APP_GUARD } from '@nestjs/core';
+import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { AppController } from './app.controller.js';
 import { AppService } from './app.service.js';
@@ -7,6 +7,8 @@ import { PrismaModule } from './prisma/prisma.module.js';
 import { AuthModule } from './auth/auth.module.js';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard.js';
 import { RolesGuard } from './auth/guards/roles.guard.js';
+import { TenantGuard } from './auth/guards/tenant.guard.js';
+import { TenantContextInterceptor } from './auth/interceptors/tenant-context.interceptor.js';
 
 @Module({
   imports: [
@@ -40,6 +42,14 @@ import { RolesGuard } from './auth/guards/roles.guard.js';
     {
       provide: APP_GUARD,
       useClass: RolesGuard,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: TenantGuard,
+    },
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: TenantContextInterceptor,
     },
   ],
 })
