@@ -41,3 +41,12 @@ lerna-debug.log*
 
 # TypeScript build info
 *.tsbuildinfo
+
+# AI Agents & IDE assistants (Devin, Claude, Copilot, Cline, etc.)
+.agents/
+.claude/
+.devin/
+.aider*
+.cline/
+.cursor/
+
