@@ -60,4 +60,13 @@ export class ProductsController {
   ) {
     return this.productsService.archive(commerceId, id);
   }
+
+  @Post(':id/restore')
+  @HttpCode(HttpStatus.OK)
+  async restore(
+    @CurrentCommerce('id') commerceId: string,
+    @Param('id') id: string,
+  ) {
+    return this.productsService.restore(commerceId, id);
+  }
 }

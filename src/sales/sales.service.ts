@@ -5,7 +5,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { CreateSaleDto } from './dto/sale.dto.js';
-import { SaleStatus, StockMovementType, SyncStatus } from '@prisma/client';
+import { Prisma, SaleStatus, StockMovementType, SyncStatus } from '@prisma/client';
 
 @Injectable()
 export class SalesService {
@@ -72,8 +72,8 @@ export class SalesService {
     return this.prisma.$transaction(async (tx) => {
       // 1. Vérifier et calculer chaque ligne de vente
       let totalAmount = 0;
-      const computedItems: any[] = [];
-      const stockDeductions: any[] = [];
+      const computedItems: Prisma.sale_itemsUncheckedCreateWithoutSaleInput[] = [];
+      const stockDeductions: Prisma.stock_movementsUncheckedCreateInput[] = [];
 
       for (const line of dto.lines) {
         const product = await tx.products.findFirst({
@@ -107,7 +107,9 @@ export class SalesService {
         // Quantité de déduction dans l'unité de référence
         const baseQtyDelta = -Number(line.quantity) * conversionFactor;
         stockDeductions.push({
+          commerce_id: commerceId,
           product_id: product.id,
+          type: StockMovementType.SALE,
           quantity_delta: baseQtyDelta,
           reason: 'Vente comptoir',
         });
@@ -145,13 +147,7 @@ export class SalesService {
       // 4. Décrémenter le stock via le grand livre immuable
       for (const deduction of stockDeductions) {
         await tx.stock_movements.create({
-          data: {
-            commerce_id: commerceId,
-            product_id: deduction.product_id,
-            type: StockMovementType.SALE,
-            quantity_delta: deduction.quantity_delta,
-            reason: deduction.reason,
-          },
+          data: deduction,
         });
       }
 

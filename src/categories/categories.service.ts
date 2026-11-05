@@ -1,4 +1,6 @@
 import {
+  BadRequestException,
+  ConflictException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -40,27 +42,78 @@ export class CategoriesService {
   }
 
   async create(commerceId: string, dto: CreateCategoryDto) {
+    const trimmedName = dto.name.trim();
+
+    const existing = await this.prisma.categories.findFirst({
+      where: {
+        commerce_id: commerceId,
+        name: {
+          equals: trimmedName,
+          mode: 'insensitive',
+        },
+      },
+    });
+
+    if (existing) {
+      throw new ConflictException('Une catégorie avec ce nom existe déjà pour ce commerce.');
+    }
+
     return this.prisma.categories.create({
       data: {
         commerce_id: commerceId,
-        name: dto.name.trim(),
+        name: trimmedName,
       },
     });
   }
 
   async update(commerceId: string, id: string, dto: UpdateCategoryDto) {
     await this.findOne(commerceId, id);
+    const trimmedName = dto.name.trim();
+
+    const conflict = await this.prisma.categories.findFirst({
+      where: {
+        commerce_id: commerceId,
+        name: {
+          equals: trimmedName,
+          mode: 'insensitive',
+        },
+        id: { not: id },
+      },
+    });
+
+    if (conflict) {
+      throw new ConflictException('Une catégorie avec ce nom existe déjà pour ce commerce.');
+    }
 
     return this.prisma.categories.update({
       where: { id },
       data: {
-        name: dto.name.trim(),
+        name: trimmedName,
       },
     });
   }
 
-  async remove(commerceId: string, id: string) {
+  async remove(commerceId: string, id: string, reassignCategoryId?: string) {
     await this.findOne(commerceId, id);
+
+    const productsCount = await this.prisma.products.count({
+      where: { commerce_id: commerceId, category_id: id },
+    });
+
+    if (productsCount > 0) {
+      if (!reassignCategoryId) {
+        throw new BadRequestException(
+          'Suppression refusée tant que des produits y sont rattachés, sauf réaffectation.',
+        );
+      }
+
+      await this.findOne(commerceId, reassignCategoryId);
+
+      await this.prisma.products.updateMany({
+        where: { commerce_id: commerceId, category_id: id },
+        data: { category_id: reassignCategoryId },
+      });
+    }
 
     return this.prisma.categories.delete({
       where: { id },

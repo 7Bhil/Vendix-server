@@ -6,13 +6,14 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { CreateCustomerDto, CreateRepaymentDto, UpdateCustomerDto } from './dto/customer.dto.js';
+import { Prisma } from '@prisma/client';
 
 @Injectable()
 export class CustomersService {
   constructor(private readonly prisma: PrismaService) {}
 
   async findAll(commerceId: string, filterMode?: 'ALL' | 'DEBTORS' | 'UP_TO_DATE', search?: string) {
-    const where: any = {
+    const where: Prisma.customersWhereInput = {
       commerce_id: commerceId,
     };
 
@@ -139,7 +140,7 @@ export class CustomersService {
       }
     }
 
-    const data: any = {};
+    const data: Prisma.customersUncheckedUpdateInput = {};
     if (dto.full_name !== undefined) data.full_name = dto.full_name.trim();
     if (dto.phone !== undefined) data.phone = dto.phone.trim();
 

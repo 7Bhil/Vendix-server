@@ -5,14 +5,14 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { CreateProductDto, UpdateProductDto } from './dto/product.dto.js';
-import { StockMovementType } from '@prisma/client';
+import { Prisma, StockMovementType } from '@prisma/client';
 
 @Injectable()
 export class ProductsService {
   constructor(private readonly prisma: PrismaService) {}
 
   async findAll(commerceId: string, query?: { categoryId?: string; search?: string; publicOnly?: boolean }) {
-    const where: any = {
+    const where: Prisma.productsWhereInput = {
       commerce_id: commerceId,
       is_archived: false,
     };
@@ -165,7 +165,7 @@ export class ProductsService {
         });
       }
 
-      const updateData: any = {};
+      const updateData: Prisma.productsUncheckedUpdateInput = {};
       if (dto.name !== undefined) updateData.name = dto.name.trim();
       if (dto.category_id !== undefined) updateData.category_id = dto.category_id;
       if (dto.image_url !== undefined) updateData.image_url = dto.image_url;
@@ -189,6 +189,21 @@ export class ProductsService {
     return this.prisma.products.update({
       where: { id },
       data: { is_archived: true },
+    });
+  }
+
+  async restore(commerceId: string, id: string) {
+    const product = await this.prisma.products.findFirst({
+      where: { id, commerce_id: commerceId },
+    });
+
+    if (!product) {
+      throw new NotFoundException('Produit introuvable.');
+    }
+
+    return this.prisma.products.update({
+      where: { id },
+      data: { is_archived: false },
     });
   }
 }

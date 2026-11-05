@@ -8,6 +8,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
 } from '@nestjs/common';
 import { CategoriesService } from './categories.service.js';
 import { CreateCategoryDto, UpdateCategoryDto } from './dto/category.dto.js';
@@ -53,7 +54,8 @@ export class CategoriesController {
   async remove(
     @CurrentCommerce('id') commerceId: string,
     @Param('id') id: string,
+    @Query('reassignCategoryId') reassignCategoryId?: string,
   ) {
-    return this.categoriesService.remove(commerceId, id);
+    return this.categoriesService.remove(commerceId, id, reassignCategoryId);
   }
 }
