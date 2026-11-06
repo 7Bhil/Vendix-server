@@ -9,6 +9,8 @@ import { CategoriesModule } from './categories/categories.module.js';
 import { ProductsModule } from './products/products.module.js';
 import { SalesModule } from './sales/sales.module.js';
 import { CustomersModule } from './customers/customers.module.js';
+import { ExpensesModule } from './expenses/expenses.module.js';
+import { CashModule } from './cash/cash.module.js';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard.js';
 import { RolesGuard } from './auth/guards/roles.guard.js';
 import { TenantGuard } from './auth/guards/tenant.guard.js';
@@ -35,6 +37,8 @@ import { TenantContextInterceptor } from './auth/interceptors/tenant-context.int
     ProductsModule,
     SalesModule,
     CustomersModule,
+    ExpensesModule,
+    CashModule,
   ],
   controllers: [AppController],
   providers: [
