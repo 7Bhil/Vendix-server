@@ -103,7 +103,12 @@ describe('PublicShopService & PublicShopController', () => {
           },
         },
       });
-      expect(result).toEqual(mockShop);
+      expect(result).toMatchObject(mockShop);
+      expect(result.whatsapp).toBe(mockShop.whatsapp_number);
+      expect(result.logoUrl).toBe(mockShop.logo_url);
+      expect(result.primaryColor).toBe(mockShop.primary_color);
+      expect(result.secondaryColor).toBe(mockShop.secondary_color);
+      expect(result.showViewsToPublic).toBe(mockShop.show_views_public);
       expect(result).not.toHaveProperty('user_id');
     });
 
