@@ -61,6 +61,7 @@ export class StockService {
    */
   private mapPrismaTypeToMotif(type: StockMovementType): string {
     switch (type) {
+      case StockMovementType.PURCHASE:
       case StockMovementType.PURCHASE_ENTRY:
         return ManualStockMotif.ENTRY;
       case StockMovementType.INVENTORY_LOSS:
@@ -69,6 +70,8 @@ export class StockService {
         return ManualStockMotif.CORRECTION;
       case StockMovementType.SALE:
         return 'SALE';
+      default:
+        return 'OTHER';
     }
   }
 
