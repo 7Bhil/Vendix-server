@@ -24,7 +24,7 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
       throw new UnauthorizedException('Utilisateur introuvable ou session révoquée.');
     }
 
-    const { password_hash, refresh_token, ...safeUser } = user;
+    const { password_hash: _hash, refresh_token: _token, ...safeUser } = user;
     return safeUser;
   }
 }
