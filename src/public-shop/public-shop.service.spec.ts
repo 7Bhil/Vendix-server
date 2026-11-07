@@ -202,7 +202,6 @@ describe('PublicShopService & PublicShopController', () => {
             label: 'Kg',
             conversion_factor: 1,
             retail_price: 600,
-            wholesale_price: null,
             is_base_unit: true,
           },
           {
@@ -210,7 +209,6 @@ describe('PublicShopService & PublicShopController', () => {
             label: 'Sac 25kg',
             conversion_factor: 25,
             retail_price: 14000,
-            wholesale_price: 13500,
             is_base_unit: false,
           },
         ],

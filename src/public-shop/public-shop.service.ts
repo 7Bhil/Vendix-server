@@ -117,12 +117,14 @@ export class PublicShopService {
             label: true,
             conversion_factor: true,
             retail_price: true,
-            wholesale_price: true,
+            // wholesale_price masque au public
             is_base_unit: true,
           },
           orderBy: { conversion_factor: 'asc' },
         },
         stock_movements: {
+          take: 100,
+          orderBy: { created_at: 'desc' },
           select: {
             quantity_delta: true,
           },
@@ -154,7 +156,7 @@ export class PublicShopService {
           label: u.label,
           conversion_factor: Number(u.conversion_factor),
           retail_price: u.retail_price,
-          wholesale_price: u.wholesale_price,
+          
           is_base_unit: u.is_base_unit,
         })),
         current_stock: currentStock,
@@ -218,12 +220,14 @@ export class PublicShopService {
             label: true,
             conversion_factor: true,
             retail_price: true,
-            wholesale_price: true,
+            // wholesale_price masque au public
             is_base_unit: true,
           },
           orderBy: { conversion_factor: 'asc' },
         },
         stock_movements: {
+          take: 100,
+          orderBy: { created_at: 'desc' },
           select: {
             quantity_delta: true,
           },
@@ -267,7 +271,7 @@ export class PublicShopService {
         label: u.label,
         conversion_factor: Number(u.conversion_factor),
         retail_price: u.retail_price,
-        wholesale_price: u.wholesale_price,
+        
         is_base_unit: u.is_base_unit,
       })),
       current_stock: currentStock,
