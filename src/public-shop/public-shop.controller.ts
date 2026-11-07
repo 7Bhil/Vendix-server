@@ -13,6 +13,7 @@ import { Throttle } from '@nestjs/throttler';
 import { Public } from '../auth/decorators/public.decorator.js';
 import { PublicShopService } from './public-shop.service.js';
 import { TrackVisitDto } from './dto/track-visit.dto.js';
+import { GetShopProductsDto } from './dto/get-shop-products.dto.js';
 
 const SLUG_REGEX = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
@@ -37,13 +38,9 @@ export class PublicShopController {
   @Get(':slug/products')
   async getShopProducts(
     @Param('slug') slug: string,
-    @Query('categoryId') categoryId?: string,
-    @Query('search') search?: string,
+    @Query() query?: GetShopProductsDto,
   ) {
-    return this.publicShopService.getShopProducts(validateSlug(slug), {
-      categoryId,
-      search,
-    });
+    return this.publicShopService.getShopProducts(validateSlug(slug), query);
   }
 
   @Get(':slug/products/:id')

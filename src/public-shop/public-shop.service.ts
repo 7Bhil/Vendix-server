@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { TrackVisitDto } from './dto/track-visit.dto.js';
+import { GetShopProductsDto } from './dto/get-shop-products.dto.js';
 
 @Injectable()
 export class PublicShopService {
@@ -55,7 +56,7 @@ export class PublicShopService {
    */
   async getShopProducts(
     slug: string,
-    query?: { categoryId?: string; search?: string },
+    query?: GetShopProductsDto,
   ) {
     const normalizedSlug = slug.trim().toLowerCase();
 
@@ -88,8 +89,13 @@ export class PublicShopService {
       };
     }
 
+    const take = Math.min(Math.max(Number(query?.limit ?? 50), 1), 100);
+    const skip = Math.max(Number(query?.offset ?? 0), 0);
+
     const products = await this.prisma.products.findMany({
       where,
+      take,
+      skip,
       select: {
         id: true,
         name: true,
