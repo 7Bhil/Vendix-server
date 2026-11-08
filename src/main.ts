@@ -1,10 +1,15 @@
+import 'dotenv/config';
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import helmet from 'helmet';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module.js';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+
+  // Configuration du reverse-proxy pour identifier les adresses IP réelles (anti-Self-DoS rate limiter)
+  app.set('trust proxy', 1);
 
   // Protection des headers HTTP essentiels (anti-XSS, anti-clickjacking, HSTS)
   app.use(helmet());
@@ -23,7 +28,7 @@ async function bootstrap() {
     origin: allowedOrigins,
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Idempotency-Key'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Idempotency-Key', 'x-commerce-id', 'X-Commerce-Id'],
   });
 
   // Validation stricte des entrées et filtrage automatique des champs non autorisés

@@ -7,10 +7,15 @@ import { JwtPayload } from '../interfaces/jwt-payload.interface.js';
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
   constructor(private readonly prisma: PrismaService) {
+    const jwtSecret = process.env.JWT_SECRET || (process.env.NODE_ENV === 'test' ? 'test_jwt_access_secret_key_32_characters_long' : undefined);
+    if (!jwtSecret || jwtSecret.length < 32) {
+      throw new Error('FATAL: JWT_SECRET must be defined in environment and contain at least 32 characters.');
+    }
+
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
-      secretOrKey: process.env.JWT_SECRET || 'vendix_jwt_access_secret_key_change_in_production_2026',
+      secretOrKey: jwtSecret,
     });
   }
 

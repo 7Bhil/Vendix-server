@@ -14,15 +14,26 @@ import { AuthTokens, JwtPayload } from './interfaces/jwt-payload.interface.js';
 
 @Injectable()
 export class AuthService {
-  private readonly jwtAccessSecret =
-    process.env.JWT_SECRET || 'vendix_jwt_access_secret_key_change_in_production_2026';
-  private readonly jwtRefreshSecret =
-    process.env.JWT_REFRESH_SECRET || 'vendix_jwt_refresh_secret_key_change_in_production_2026';
+  private readonly jwtAccessSecret: string;
+  private readonly jwtRefreshSecret: string;
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
-  ) {}
+  ) {
+    const accessSecret = process.env.JWT_SECRET || (process.env.NODE_ENV === 'test' ? 'test_jwt_access_secret_key_32_characters_long' : undefined);
+    const refreshSecret = process.env.JWT_REFRESH_SECRET || (process.env.NODE_ENV === 'test' ? 'test_jwt_refresh_secret_key_32_characters_long' : undefined);
+
+    if (!accessSecret || accessSecret.length < 32) {
+      throw new Error('FATAL: JWT_SECRET must be defined in environment and contain at least 32 characters.');
+    }
+    if (!refreshSecret || refreshSecret.length < 32) {
+      throw new Error('FATAL: JWT_REFRESH_SECRET must be defined in environment and contain at least 32 characters.');
+    }
+
+    this.jwtAccessSecret = accessSecret;
+    this.jwtRefreshSecret = refreshSecret;
+  }
 
   async register(dto: RegisterDto) {
     const existing = await this.prisma.users.findUnique({
@@ -37,7 +48,8 @@ export class AuthService {
       type: argon2.argon2id,
     });
 
-    const role = dto.role ?? UserRole.MERCHANT;
+    // Sécurité stricte : tout compte créé via l'API publique est impérativement un MERCHANT.
+    const role = UserRole.MERCHANT;
 
     const user = await this.prisma.$transaction(async (tx) => {
       const newUser = await tx.users.create({
