@@ -68,7 +68,7 @@ import { TenantContextInterceptor } from './auth/interceptors/tenant-context.int
       useClass: TenantGuard,
     },
     {
-      provide: APP_GUARD,
+      provide: APP_INTERCEPTOR,
       useClass: TenantContextInterceptor,
     },
   ],

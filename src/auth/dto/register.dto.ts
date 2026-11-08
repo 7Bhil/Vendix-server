@@ -1,5 +1,4 @@
-import { IsEnum, IsNotEmpty, IsOptional, IsString, Length, Matches, IsEmail } from 'class-validator';
-import { UserRole } from '@prisma/client';
+import { IsNotEmpty, IsOptional, IsString, Length, Matches, IsEmail } from 'class-validator';
 
 export class RegisterDto {
   @IsNotEmpty({ message: 'Le numéro de téléphone est obligatoire.' })
@@ -17,10 +16,6 @@ export class RegisterDto {
   @IsOptional()
   @IsEmail({}, { message: 'Adresse email de récupération invalide.' })
   email_recovery?: string;
-
-  @IsOptional()
-  @IsEnum(UserRole, { message: 'Rôle invalide (MERCHANT ou ADMIN attendu).' })
-  role?: UserRole;
 
   @IsOptional()
   @IsString()
