@@ -7,7 +7,13 @@ describe('TenantGuard', () => {
   const reflector = new Reflector();
   const guard = new TenantGuard(reflector);
 
-  function createMockContext(user: any, params: any = {}, query: any = {}, body: any = {}): ExecutionContext {
+  function createMockContext(
+    user: any,
+    params: any = {},
+    query: any = {},
+    body: any = {},
+    headers: any = {},
+  ): ExecutionContext {
     return {
       switchToHttp: () => ({
         getRequest: () => ({
@@ -15,6 +21,7 @@ describe('TenantGuard', () => {
           params,
           query,
           body,
+          headers,
         }),
       }),
       getHandler: () => ({}),
@@ -77,5 +84,29 @@ describe('TenantGuard', () => {
 
     expect(guard.canActivate(ctx)).toBe(true);
     expect(req.commerceId).toBe('comm-123');
+  });
+
+  it('devrait bloquer un commerçant qui envoie un header x-commerce-id usurpé d’un concurrent', () => {
+    vi.spyOn(reflector, 'getAllAndOverride').mockReturnValue(false);
+    const merchantUser = {
+      id: 'merchant-1',
+      role: 'MERCHANT',
+      commerce: { id: 'comm-123' },
+    };
+
+    const ctx = createMockContext(merchantUser, {}, {}, {}, { 'x-commerce-id': 'comm-hacker' });
+    expect(() => guard.canActivate(ctx)).toThrow(NotFoundException);
+  });
+
+  it('devrait autoriser si le header x-commerce-id correspond au commerce authentifié', () => {
+    vi.spyOn(reflector, 'getAllAndOverride').mockReturnValue(false);
+    const merchantUser = {
+      id: 'merchant-1',
+      role: 'MERCHANT',
+      commerce: { id: 'comm-123' },
+    };
+
+    const ctx = createMockContext(merchantUser, {}, {}, {}, { 'x-commerce-id': 'comm-123' });
+    expect(guard.canActivate(ctx)).toBe(true);
   });
 });

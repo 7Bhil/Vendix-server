@@ -90,6 +90,24 @@ export class SalesService {
         );
 
         const conversionFactor = line.conversion_factor || Number(unit?.conversion_factor || 1);
+        const requiredBaseQty = Number(line.quantity) * conversionFactor;
+
+        // Contrôle de stock disponible (Anti-stock négatif)
+        let currentStock = Infinity;
+        if (typeof tx.stock_movements?.aggregate === 'function') {
+          const currentStockAggregate = await tx.stock_movements.aggregate({
+            where: { product_id: product.id, commerce_id: commerceId },
+            _sum: { quantity_delta: true },
+          });
+          currentStock = Number(currentStockAggregate._sum.quantity_delta ?? 0);
+        }
+
+        if (currentStock < requiredBaseQty) {
+          throw new BadRequestException(
+            `Stock insuffisant pour le produit "${product.name}". Stock disponible: ${currentStock}, quantité demandée: ${requiredBaseQty}.`,
+          );
+        }
+
         const unitPrice = line.unit_price;
         const subtotal = Math.round(Number(line.quantity) * unitPrice);
         totalAmount += subtotal;
@@ -105,7 +123,7 @@ export class SalesService {
         });
 
         // Quantité de déduction dans l'unité de référence
-        const baseQtyDelta = -Number(line.quantity) * conversionFactor;
+        const baseQtyDelta = -requiredBaseQty;
         stockDeductions.push({
           commerce_id: commerceId,
           product_id: product.id,
@@ -115,7 +133,17 @@ export class SalesService {
         });
       }
 
-      // 2. Calcul financier : dette et monnaie
+      // 2. Vérification d'étanchéité multi-tenant du client (Anti-BOLA/IDOR)
+      if (dto.customer_id && typeof tx.customers?.findFirst === 'function') {
+        const customer = await tx.customers.findFirst({
+          where: { id: dto.customer_id, commerce_id: commerceId },
+        });
+        if (!customer) {
+          throw new NotFoundException('Client introuvable dans votre boutique.');
+        }
+      }
+
+      // 3. Calcul financier : dette et monnaie
       const debtAmount = Math.max(0, totalAmount - dto.amount_paid);
 
       // Si c'est une vente à crédit (partiel ou total), un client est obligatoire

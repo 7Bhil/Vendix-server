@@ -94,6 +94,16 @@ export class ProductsService {
       throw new BadRequestException('Au moins une unité de vente doit être définie.');
     }
 
+    // Vérification d'étanchéité multi-tenant de la catégorie (Anti-BOLA/IDOR)
+    if (dto.category_id) {
+      const category = await this.prisma.categories.findFirst({
+        where: { id: dto.category_id, commerce_id: commerceId },
+      });
+      if (!category) {
+        throw new NotFoundException('Catégorie introuvable dans votre boutique.');
+      }
+    }
+
     const hasBase = dto.units.some((u) => u.is_base_unit);
     const unitsToInsert = dto.units.map((u, idx) => ({
       label: u.label,
