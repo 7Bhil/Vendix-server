@@ -15,6 +15,7 @@ import { SuppliersModule } from './suppliers/suppliers.module.js';
 import { PurchasesModule } from './purchases/purchases.module.js';
 import { ExpensesModule } from './expenses/expenses.module.js';
 import { CashModule } from './cash/cash.module.js';
+import { AdminModule } from './admin/admin.module.js';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard.js';
 import { RolesGuard } from './auth/guards/roles.guard.js';
 import { TenantGuard } from './auth/guards/tenant.guard.js';
@@ -47,6 +48,7 @@ import { TenantContextInterceptor } from './auth/interceptors/tenant-context.int
     PurchasesModule,
     ExpensesModule,
     CashModule,
+    AdminModule,
   ],
   controllers: [AppController],
   providers: [
