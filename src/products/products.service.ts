@@ -11,6 +11,24 @@ import { Prisma, StockMovementType } from '@prisma/client';
 export class ProductsService {
   constructor(private readonly prisma: PrismaService) {}
 
+  private async ensureCategoryBelongsToCommerce(
+    commerceId: string,
+    categoryId: string,
+    tx?: Prisma.TransactionClient,
+  ) {
+    const client = tx ?? this.prisma;
+    const category = await client.categories.findFirst({
+      where: {
+        id: categoryId,
+        commerce_id: commerceId,
+      },
+    });
+
+    if (!category) {
+      throw new NotFoundException('Catégorie introuvable.');
+    }
+  }
+
   async findAll(commerceId: string, query?: { categoryId?: string; search?: string; publicOnly?: boolean }) {
     const where: Prisma.productsWhereInput = {
       commerce_id: commerceId,
@@ -69,7 +87,6 @@ export class ProductsService {
         },
         stock_movements: {
           orderBy: { created_at: 'desc' },
-          take: 20,
         },
       },
     });
@@ -94,14 +111,23 @@ export class ProductsService {
       throw new BadRequestException('Au moins une unité de vente doit être définie.');
     }
 
-    const hasBase = dto.units.some((u) => u.is_base_unit);
-    const unitsToInsert = dto.units.map((u, idx) => ({
-      label: u.label,
-      conversion_factor: u.conversion_factor || 1,
-      retail_price: u.retail_price,
-      wholesale_price: u.wholesale_price,
-      is_base_unit: hasBase ? !!u.is_base_unit : idx === 0,
-    }));
+    if (dto.category_id) {
+      await this.ensureCategoryBelongsToCommerce(commerceId, dto.category_id);
+    }
+
+    const explicitBaseIndex = dto.units.findIndex((u) => u.is_base_unit);
+    const baseIndex = explicitBaseIndex >= 0 ? explicitBaseIndex : 0;
+
+    const unitsToInsert = dto.units.map((u, idx) => {
+      const isBaseUnit = idx === baseIndex;
+      return {
+        label: u.label,
+        conversion_factor: isBaseUnit ? 1 : u.conversion_factor || 1,
+        retail_price: u.retail_price,
+        wholesale_price: u.wholesale_price,
+        is_base_unit: isBaseUnit,
+      };
+    });
 
     return this.prisma.$transaction(async (tx) => {
       const product = await tx.products.create({
@@ -147,21 +173,31 @@ export class ProductsService {
   async update(commerceId: string, id: string, dto: UpdateProductDto) {
     await this.findOne(commerceId, id);
 
+    if (dto.category_id) {
+      await this.ensureCategoryBelongsToCommerce(commerceId, dto.category_id);
+    }
+
     return this.prisma.$transaction(async (tx) => {
       if (dto.units && dto.units.length > 0) {
+        const explicitBaseIndex = dto.units.findIndex((u) => u.is_base_unit);
+        const baseIndex = explicitBaseIndex >= 0 ? explicitBaseIndex : 0;
+
         await tx.product_units.deleteMany({
           where: { product_id: id },
         });
 
         await tx.product_units.createMany({
-          data: dto.units.map((u, idx) => ({
-            product_id: id,
-            label: u.label.trim(),
-            conversion_factor: u.conversion_factor || 1,
-            retail_price: u.retail_price,
-            wholesale_price: u.wholesale_price,
-            is_base_unit: u.is_base_unit ?? idx === 0,
-          })),
+          data: dto.units.map((u, idx) => {
+            const isBaseUnit = idx === baseIndex;
+            return {
+              product_id: id,
+              label: u.label.trim(),
+              conversion_factor: isBaseUnit ? 1 : u.conversion_factor || 1,
+              retail_price: u.retail_price,
+              wholesale_price: u.wholesale_price,
+              is_base_unit: isBaseUnit,
+            };
+          }),
         });
       }
 

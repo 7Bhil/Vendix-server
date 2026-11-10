@@ -26,10 +26,6 @@ export class SaleLineInputDto {
   @IsString()
   unit_label!: string;
 
-  @IsOptional()
-  @IsNumber()
-  conversion_factor?: number;
-
   @IsInt({ message: 'Le prix unitaire doit être un entier en FCFA.' })
   @Min(0)
   unit_price!: number;
