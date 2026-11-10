@@ -128,10 +128,19 @@ export class SalesService {
           (cumulativeRequiredByProduct.get(product.id) ?? 0) + requiredBaseQty;
         cumulativeRequiredByProduct.set(product.id, totalRequiredForProduct);
 
-        const availableStock = (product.stock_movements ?? []).reduce(
-          (acc, sm) => acc + Number(sm.quantity_delta),
-          0,
-        );
+        let availableStock = 0;
+        if (Array.isArray(product.stock_movements)) {
+          availableStock = product.stock_movements.reduce(
+            (acc, sm) => acc + Number(sm.quantity_delta),
+            0,
+          );
+        } else if (typeof tx.stock_movements?.aggregate === 'function') {
+          const currentStockAggregate = await tx.stock_movements.aggregate({
+            where: { product_id: product.id, commerce_id: commerceId },
+            _sum: { quantity_delta: true },
+          });
+          availableStock = Number(currentStockAggregate._sum.quantity_delta ?? 0);
+        }
 
         if (availableStock < totalRequiredForProduct) {
           throw new BadRequestException(
@@ -164,6 +173,15 @@ export class SalesService {
         });
       }
 
+      // 2b. Vérification d'étanchéité multi-tenant du client (Anti-BOLA/IDOR)
+      if (dto.customer_id && typeof tx.customers?.findFirst === 'function') {
+        const customer = await tx.customers.findFirst({
+          where: { id: dto.customer_id, commerce_id: commerceId },
+        });
+        if (!customer) {
+          throw new NotFoundException('Client introuvable dans votre boutique.');
+        }
+      }
       // 3. Calcul financier : dette et monnaie
       const debtAmount = Math.max(0, totalAmount - dto.amount_paid);
 

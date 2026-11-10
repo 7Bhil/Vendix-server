@@ -48,9 +48,11 @@ export class TenantGuard implements CanActivate {
       throw new NotFoundException('Ressource introuvable.');
     }
 
-    // Si la requête contient un paramètre de route ou de requête "commerceId" explicite,
+    // Si la requête contient un paramètre de route, de requête, de corps ou un header "x-commerce-id" explicite,
     // vérifier qu'il correspond exactement au commerce du commerçant authentifié
+    const headerCommerceId = request.headers?.['x-commerce-id'] || request.headers?.['X-Commerce-Id'];
     const paramCommerceId =
+      headerCommerceId ||
       request.params?.commerceId ||
       request.query?.commerceId ||
       request.body?.commerceId;

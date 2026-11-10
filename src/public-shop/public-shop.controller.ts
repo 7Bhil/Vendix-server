@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
@@ -12,6 +13,17 @@ import { Throttle } from '@nestjs/throttler';
 import { Public } from '../auth/decorators/public.decorator.js';
 import { PublicShopService } from './public-shop.service.js';
 import { TrackVisitDto } from './dto/track-visit.dto.js';
+import { GetShopProductsDto } from './dto/get-shop-products.dto.js';
+
+const SLUG_REGEX = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+
+function validateSlug(slug: string): string {
+  const normalized = (slug || '').trim().toLowerCase();
+  if (!normalized || !SLUG_REGEX.test(normalized)) {
+    throw new BadRequestException('Le format du slug de boutique est invalide.');
+  }
+  return normalized;
+}
 
 @Public()
 @Controller(['api/v1/public/shop', 'public/shop'])
@@ -20,19 +32,15 @@ export class PublicShopController {
 
   @Get(':slug')
   async getShopBySlug(@Param('slug') slug: string) {
-    return this.publicShopService.getShopBySlug(slug);
+    return this.publicShopService.getShopBySlug(validateSlug(slug));
   }
 
   @Get(':slug/products')
   async getShopProducts(
     @Param('slug') slug: string,
-    @Query('categoryId') categoryId?: string,
-    @Query('search') search?: string,
+    @Query() query?: GetShopProductsDto,
   ) {
-    return this.publicShopService.getShopProducts(slug, {
-      categoryId,
-      search,
-    });
+    return this.publicShopService.getShopProducts(validateSlug(slug), query);
   }
 
   @Get(':slug/products/:id')
@@ -40,7 +48,7 @@ export class PublicShopController {
     @Param('slug') slug: string,
     @Param('id') id: string,
   ) {
-    return this.publicShopService.getShopProductById(slug, id);
+    return this.publicShopService.getShopProductById(validateSlug(slug), id);
   }
 
   @Throttle({ default: { limit: 30, ttl: 60000 } })
@@ -50,6 +58,7 @@ export class PublicShopController {
     @Param('slug') slug: string,
     @Body() dto?: TrackVisitDto,
   ) {
-    return this.publicShopService.trackVisit(slug, dto);
+    return this.publicShopService.trackVisit(validateSlug(slug), dto);
   }
 }
+

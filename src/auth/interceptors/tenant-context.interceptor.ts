@@ -20,12 +20,6 @@ export class TenantContextInterceptor implements NestInterceptor {
 
     if (user && user.commerce?.id) {
       request.commerceId = user.commerce.id;
-
-      // Si c'est une requête de mutation avec un payload JSON,
-      // on s'assure que le commerceId injecté provient toujours du token et ne peut pas être falsifié
-      if (request.body && typeof request.body === 'object') {
-        request.body.commerce_id = user.commerce.id;
-      }
     }
 
     return next.handle();

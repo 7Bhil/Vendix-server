@@ -101,7 +101,12 @@ describe('PublicShopService & PublicShopController', () => {
           },
         },
       });
-      expect(result).toEqual(mockShop);
+      expect(result).toMatchObject(mockShop);
+      expect(result.whatsapp).toBe(mockShop.whatsapp_number);
+      expect(result.logoUrl).toBe(mockShop.logo_url);
+      expect(result.primaryColor).toBe(mockShop.primary_color);
+      expect(result.secondaryColor).toBe(mockShop.secondary_color);
+      expect(result.showViewsToPublic).toBe(mockShop.show_views_public);
       expect(result).not.toHaveProperty('user_id');
     });
 
@@ -195,7 +200,6 @@ describe('PublicShopService & PublicShopController', () => {
             label: 'Kg',
             conversion_factor: 1,
             retail_price: 600,
-            wholesale_price: null,
             is_base_unit: true,
           },
           {
@@ -203,7 +207,6 @@ describe('PublicShopService & PublicShopController', () => {
             label: 'Sac 25kg',
             conversion_factor: 25,
             retail_price: 14000,
-            wholesale_price: 13500,
             is_base_unit: false,
           },
         ],

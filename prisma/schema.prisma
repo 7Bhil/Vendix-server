@@ -23,6 +23,7 @@ enum SyncStatus {
 
 enum StockMovementType {
   SALE
+  PURCHASE
   PURCHASE_ENTRY
   MANUAL_ADJUST
   INVENTORY_LOSS
@@ -41,9 +42,18 @@ enum SaleStatus {
 }
 
 enum PurchaseStatus {
+  PENDING
+  RECEIVED
   ORDERED
   PARTIALLY_RECEIVED
   COMPLETED
+}
+
+enum ReportStatus {
+  EN_ATTENTE
+  EN_COURS
+  RESOLU
+  REJETE
 }
 
 // ==========================================
@@ -70,10 +80,12 @@ model commerces {
   name              String   @db.VarChar(100)
   slug              String   @unique @db.VarChar(60)
   whatsapp_number   String   @db.VarChar(20)
+  whatsapp_phone    String?  @db.VarChar(20)
   logo_url          String?  @db.Text
-  primary_color     String   @default("#1e40af") @db.VarChar(7)
-  secondary_color   String   @default("#f59e0b") @db.VarChar(7)
-  show_views_public Boolean  @default(false)
+  primary_color     String?  @default("#059669") @db.VarChar(7)
+  secondary_color   String?  @default("#d97706") @db.VarChar(7)
+  receipt_format    String   @default("58mm") @db.VarChar(10)
+  show_views_public Boolean  @default(true)
   created_at        DateTime @default(now()) @db.Timestamp(6)
   updated_at        DateTime @default(now()) @updatedAt @db.Timestamp(6)
 
@@ -87,6 +99,7 @@ model commerces {
   customer_repayments customer_repayments[]
   cash_sessions       cash_sessions[]
   suppliers           suppliers[]
+  supplier_payments   supplier_payments[]
   purchases           purchases[]
   expenses            expenses[]
 }
@@ -139,6 +152,7 @@ model products {
   product_units   product_units[]
   stock_movements stock_movements[]
   sale_items      sale_items[]
+  purchase_items  purchase_items[]
 
   @@index([commerce_id])
   @@index([category_id])
@@ -282,27 +296,67 @@ model suppliers {
   created_at       DateTime @default(now()) @db.Timestamp(6)
   updated_at       DateTime @default(now()) @updatedAt @db.Timestamp(6)
 
-  commerce  commerces   @relation(fields: [commerce_id], references: [id])
+  commerce  commerces           @relation(fields: [commerce_id], references: [id])
   purchases purchases[]
+  payments  supplier_payments[]
 
   @@index([commerce_id])
 }
 
-model purchases {
-  id          String         @id @default(uuid()) @db.Uuid
-  commerce_id String         @db.Uuid
-  supplier_id String         @db.Uuid
-  total_cost  Int
-  amount_paid Int
-  status      PurchaseStatus @default(ORDERED)
-  created_at  DateTime       @default(now()) @db.Timestamp(6)
-  updated_at  DateTime       @default(now()) @updatedAt @db.Timestamp(6)
+model supplier_payments {
+  id             String        @id @default(uuid()) @db.Uuid
+  commerce_id    String        @db.Uuid
+  supplier_id    String        @db.Uuid
+  amount         Int
+  payment_method PaymentMethod @default(CASH)
+  notes          String?       @db.VarChar(150)
+  created_at     DateTime      @default(now()) @db.Timestamp(6)
+  updated_at     DateTime      @default(now()) @updatedAt @db.Timestamp(6)
 
   commerce commerces @relation(fields: [commerce_id], references: [id])
   supplier suppliers @relation(fields: [supplier_id], references: [id])
 
   @@index([commerce_id])
   @@index([supplier_id])
+}
+
+model purchases {
+  id             String         @id @default(uuid()) @db.Uuid
+  commerce_id    String         @db.Uuid
+  supplier_id    String         @db.Uuid
+  total_cost     Int
+  amount_paid    Int
+  debt_amount    Int            @default(0)
+  payment_method PaymentMethod  @default(CASH)
+  status         PurchaseStatus @default(PENDING)
+  created_at     DateTime       @default(now()) @db.Timestamp(6)
+  updated_at     DateTime       @default(now()) @updatedAt @db.Timestamp(6)
+
+  commerce commerces        @relation(fields: [commerce_id], references: [id])
+  supplier suppliers        @relation(fields: [supplier_id], references: [id])
+  items    purchase_items[]
+
+  @@index([commerce_id])
+  @@index([supplier_id])
+}
+
+model purchase_items {
+  id                   String   @id @default(uuid()) @db.Uuid
+  purchase_id          String   @db.Uuid
+  product_id           String   @db.Uuid
+  quantity             Decimal  @db.Decimal(14, 3)
+  unit_label_snapshot  String   @db.VarChar(50)
+  conversion_rate_snap Decimal  @default(1.000) @db.Decimal(14, 3)
+  unit_cost_snapshot   Int
+  subtotal             Int
+  created_at           DateTime @default(now()) @db.Timestamp(6)
+  updated_at           DateTime @default(now()) @updatedAt @db.Timestamp(6)
+
+  purchase purchases @relation(fields: [purchase_id], references: [id], onDelete: Cascade)
+  product  products  @relation(fields: [product_id], references: [id])
+
+  @@index([purchase_id])
+  @@index([product_id])
 }
 
 model expenses {
@@ -329,4 +383,19 @@ model audit_logs {
   user users? @relation(fields: [user_id], references: [id])
 
   @@index([user_id])
+}
+
+model reports {
+  id             String       @id @default(uuid()) @db.Uuid
+  target_slug    String       @db.VarChar(60)
+  reason         String       @db.VarChar(80)
+  reporter_phone String       @db.VarChar(20)
+  description    String       @db.Text
+  evidence_urls  String[]     @default([])
+  status         ReportStatus @default(EN_ATTENTE)
+  created_at     DateTime     @default(now()) @db.Timestamp(6)
+  updated_at     DateTime     @default(now()) @updatedAt @db.Timestamp(6)
+
+  @@index([target_slug])
+  @@index([status])
 }
