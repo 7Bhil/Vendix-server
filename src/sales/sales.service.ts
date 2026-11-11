@@ -70,52 +70,92 @@ export class SalesService {
     }
 
     return this.prisma.$transaction(async (tx) => {
-      // 1. Vérifier et calculer chaque ligne de vente
+      // 1. Poser un verrou pessimiste en base de données (SELECT ... FOR UPDATE) par produit trié
+      // afin d'empêcher deux encaissements simultanés de provoquer une survente (stock négatif)
+      const uniqueProductIds = [...new Set(dto.lines.map((l) => l.product_id))].sort();
+      if (typeof tx.$queryRaw === 'function') {
+        for (const productId of uniqueProductIds) {
+          await tx.$queryRaw`SELECT id FROM products WHERE id = ${productId}::uuid AND commerce_id = ${commerceId}::uuid FOR UPDATE`;
+        }
+      }
+
+      // 2. Vérifier et calculer chaque ligne de vente avec contrôle strict du stock et des unités BDD
       let totalAmount = 0;
       const computedItems: Prisma.sale_itemsUncheckedCreateWithoutSaleInput[] = [];
       const stockDeductions: Prisma.stock_movementsUncheckedCreateInput[] = [];
+      const cumulativeRequiredByProduct = new Map<string, number>();
 
       for (const line of dto.lines) {
         const product = await tx.products.findFirst({
           where: { id: line.product_id, commerce_id: commerceId, is_archived: false },
-          include: { product_units: true },
+          include: {
+            product_units: true,
+            stock_movements: {
+              select: { quantity_delta: true },
+            },
+          },
         });
 
         if (!product) {
           throw new NotFoundException(`Produit ID ${line.product_id} introuvable.`);
         }
 
+        const requestedUnitKey = line.unit_label.trim().toLowerCase();
         const unit = product.product_units.find(
-          (u) => u.label.toLowerCase() === line.unit_label.toLowerCase(),
+          (u) =>
+            u.id.toLowerCase() === requestedUnitKey ||
+            u.label.trim().toLowerCase() === requestedUnitKey,
         );
 
-        const conversionFactor = line.conversion_factor || Number(unit?.conversion_factor || 1);
-        const requiredBaseQty = Number(line.quantity) * conversionFactor;
+        if (!unit) {
+          throw new BadRequestException(
+            `Unité de vente "${line.unit_label}" invalide pour le produit "${product.name ?? product.id}".`,
+          );
+        }
 
-        // Contrôle de stock disponible (Anti-stock négatif)
-        let currentStock = Infinity;
-        if (typeof tx.stock_movements?.aggregate === 'function') {
+        // La base de données est l'unique autorité sur le facteur de conversion
+        // Une unité de base vaut toujours exactement 1 unité de référence
+        const conversionFactor = unit.is_base_unit ? 1 : Number(unit.conversion_factor);
+        if (!Number.isFinite(conversionFactor) || conversionFactor <= 0) {
+          throw new BadRequestException(
+            `Facteur de conversion invalide en base pour l’unité "${unit.label}".`,
+          );
+        }
+
+        const lineQuantity = Number(line.quantity);
+        const requiredBaseQty = lineQuantity * conversionFactor;
+        const totalRequiredForProduct =
+          (cumulativeRequiredByProduct.get(product.id) ?? 0) + requiredBaseQty;
+        cumulativeRequiredByProduct.set(product.id, totalRequiredForProduct);
+
+        let availableStock = 0;
+        if (Array.isArray(product.stock_movements)) {
+          availableStock = product.stock_movements.reduce(
+            (acc, sm) => acc + Number(sm.quantity_delta),
+            0,
+          );
+        } else if (typeof tx.stock_movements?.aggregate === 'function') {
           const currentStockAggregate = await tx.stock_movements.aggregate({
             where: { product_id: product.id, commerce_id: commerceId },
             _sum: { quantity_delta: true },
           });
-          currentStock = Number(currentStockAggregate._sum.quantity_delta ?? 0);
+          availableStock = Number(currentStockAggregate._sum.quantity_delta ?? 0);
         }
 
-        if (currentStock < requiredBaseQty) {
+        if (availableStock < totalRequiredForProduct) {
           throw new BadRequestException(
-            `Stock insuffisant pour le produit "${product.name}". Stock disponible: ${currentStock}, quantité demandée: ${requiredBaseQty}.`,
+            `Stock insuffisant pour le produit "${product.name ?? product.id}" (disponible : ${availableStock}, requis : ${totalRequiredForProduct}).`,
           );
         }
 
         const unitPrice = line.unit_price;
-        const subtotal = Math.round(Number(line.quantity) * unitPrice);
+        const subtotal = Math.round(lineQuantity * unitPrice);
         totalAmount += subtotal;
 
         computedItems.push({
           product_id: product.id,
           quantity: line.quantity,
-          unit_label_snapshot: line.unit_label,
+          unit_label_snapshot: unit.label,
           conversion_rate_snap: conversionFactor,
           unit_price_snapshot: unitPrice,
           cost_price_snapshot: product.default_cost_price,
@@ -133,7 +173,7 @@ export class SalesService {
         });
       }
 
-      // 2. Vérification d'étanchéité multi-tenant du client (Anti-BOLA/IDOR)
+      // 2b. Vérification d'étanchéité multi-tenant du client (Anti-BOLA/IDOR)
       if (dto.customer_id && typeof tx.customers?.findFirst === 'function') {
         const customer = await tx.customers.findFirst({
           where: { id: dto.customer_id, commerce_id: commerceId },
@@ -142,16 +182,17 @@ export class SalesService {
           throw new NotFoundException('Client introuvable dans votre boutique.');
         }
       }
-
       // 3. Calcul financier : dette et monnaie
       const debtAmount = Math.max(0, totalAmount - dto.amount_paid);
 
       // Si c'est une vente à crédit (partiel ou total), un client est obligatoire
       if (debtAmount > 0 && !dto.customer_id) {
-        throw new BadRequestException('Un client doit être désigné pour toute vente comportant un crédit ou un reste dû.');
+        throw new BadRequestException(
+          'Un client doit être désigné pour toute vente comportant un crédit ou un reste dû.',
+        );
       }
 
-      // 3. Enregistrer la vente et ses snapshots
+      // 4. Enregistrer la vente et ses snapshots
       const sale = await tx.sales.create({
         data: {
           id: dto.client_op_uuid || undefined,
@@ -172,14 +213,14 @@ export class SalesService {
         },
       });
 
-      // 4. Décrémenter le stock via le grand livre immuable
+      // 5. Décrémenter le stock via le grand livre immuable
       for (const deduction of stockDeductions) {
         await tx.stock_movements.create({
           data: deduction,
         });
       }
 
-      // 5. Mettre à jour l'encours de dette client si applicable
+      // 6. Mettre à jour l'encours de dette client si applicable
       if (debtAmount > 0 && dto.customer_id) {
         await tx.customers.update({
           where: { id: dto.customer_id },
@@ -189,7 +230,7 @@ export class SalesService {
         });
       }
 
-      // 6. Idempotence sync
+      // 7. Idempotence sync
       if (dto.client_op_uuid) {
         await tx.sync_operations.create({
           data: {

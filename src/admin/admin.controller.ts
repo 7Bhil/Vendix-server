@@ -1,20 +1,38 @@
-import { Controller, Get, Post, Patch, Param, Body, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Patch,
+  Param,
+  Body,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
+import { ReportStatus } from '@prisma/client';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
 import { RolesGuard } from '../auth/guards/roles.guard.js';
 import { Roles } from '../auth/decorators/roles.decorator.js';
+import { ReportsService } from '../reports/reports.service.js';
+import { UpdateReportStatusDto } from '../reports/dto/report.dto.js';
 
-@Controller('admin')
+@Controller(['admin', 'api/v1/admin'])
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles('ADMIN')
 export class AdminController {
+  constructor(private readonly reportsService: ReportsService) {}
+
   @Get('dashboard')
   async getDashboardStats() {
+    const pendingReportsList = await this.reportsService.findAll(
+      ReportStatus.EN_ATTENTE,
+    );
+
     return {
       totalMerchants: 42,
       activeMerchants: 38,
       suspendedMerchants: 4,
       totalVolumeFCFA: 18450000,
-      pendingReports: 3,
+      pendingReports: pendingReportsList.length,
     };
   }
 
@@ -33,7 +51,10 @@ export class AdminController {
   }
 
   @Post('merchants/:id/suspend')
-  async suspendMerchant(@Param('id') id: string, @Body() body: { reason?: string }) {
+  async suspendMerchant(
+    @Param('id') id: string,
+    @Body() body: { reason?: string },
+  ) {
     return {
       success: true,
       id,
@@ -43,16 +64,15 @@ export class AdminController {
   }
 
   @Get('reports')
-  async getReports() {
-    return [];
+  async getReports(@Query('status') status?: ReportStatus) {
+    return this.reportsService.findAll(status);
   }
 
   @Patch('reports/:id')
-  async updateReport(@Param('id') id: string, @Body() body: { status: string }) {
-    return {
-      success: true,
-      id,
-      status: body.status,
-    };
+  async updateReport(
+    @Param('id') id: string,
+    @Body() body: UpdateReportStatusDto,
+  ) {
+    return this.reportsService.updateStatus(id, body);
   }
 }

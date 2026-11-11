@@ -123,7 +123,6 @@ export class PublicShopService {
           orderBy: { conversion_factor: 'asc' },
         },
         stock_movements: {
-          take: 100,
           orderBy: { created_at: 'desc' },
           select: {
             quantity_delta: true,
@@ -226,7 +225,6 @@ export class PublicShopService {
           orderBy: { conversion_factor: 'asc' },
         },
         stock_movements: {
-          take: 100,
           orderBy: { created_at: 'desc' },
           select: {
             quantity_delta: true,

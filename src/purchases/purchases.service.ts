@@ -90,7 +90,15 @@ export class PurchasesService {
         throw new NotFoundException('Fournisseur introuvable.');
       }
 
-      // 2. Vérifier et calculer chaque ligne d'achat
+      // 2. Poser un verrou en base de données sur les produits concernés (SELECT ... FOR UPDATE)
+      const uniqueProductIds = [...new Set(dto.lines.map((l) => l.product_id))].sort();
+      if (typeof tx.$queryRaw === 'function') {
+        for (const productId of uniqueProductIds) {
+          await tx.$queryRaw`SELECT id FROM products WHERE id = ${productId}::uuid AND commerce_id = ${commerceId}::uuid FOR UPDATE`;
+        }
+      }
+
+      // 3. Vérifier et calculer chaque ligne d'achat
       let totalCost = 0;
       const computedItems: Prisma.purchase_itemsUncheckedCreateWithoutPurchaseInput[] = [];
       const stockEntries: Prisma.stock_movementsUncheckedCreateInput[] = [];
@@ -105,11 +113,16 @@ export class PurchasesService {
           throw new NotFoundException(`Produit ID ${line.product_id} introuvable.`);
         }
 
+        const requestedUnitKey = line.unit_label.trim().toLowerCase();
         const unit = product.product_units.find(
-          (u) => u.label.toLowerCase() === line.unit_label.toLowerCase(),
+          (u) =>
+            u.id.toLowerCase() === requestedUnitKey ||
+            u.label.trim().toLowerCase() === requestedUnitKey,
         );
 
-        const conversionFactor = line.conversion_factor || Number(unit?.conversion_factor || 1);
+        const conversionFactor = unit?.is_base_unit
+          ? 1
+          : Number(unit?.conversion_factor || 1);
         const unitCost = line.unit_cost;
         const subtotal = Math.round(Number(line.quantity) * unitCost);
         totalCost += subtotal;
@@ -117,7 +130,7 @@ export class PurchasesService {
         computedItems.push({
           product_id: product.id,
           quantity: line.quantity,
-          unit_label_snapshot: line.unit_label,
+          unit_label_snapshot: unit ? unit.label : line.unit_label,
           conversion_rate_snap: conversionFactor,
           unit_cost_snapshot: unitCost,
           subtotal,

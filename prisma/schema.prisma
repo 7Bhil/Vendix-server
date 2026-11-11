@@ -49,6 +49,13 @@ enum PurchaseStatus {
   COMPLETED
 }
 
+enum ReportStatus {
+  EN_ATTENTE
+  EN_COURS
+  RESOLU
+  REJETE
+}
+
 // ==========================================
 // 1. DOMAINE COMPTE, SÉCURITÉ & MULTI-COMMERCE (PALIER P0)
 // ==========================================
@@ -73,10 +80,12 @@ model commerces {
   name              String   @db.VarChar(100)
   slug              String   @unique @db.VarChar(60)
   whatsapp_number   String   @db.VarChar(20)
+  whatsapp_phone    String?  @db.VarChar(20)
   logo_url          String?  @db.Text
-  primary_color     String   @default("#1e40af") @db.VarChar(7)
-  secondary_color   String   @default("#f59e0b") @db.VarChar(7)
-  show_views_public Boolean  @default(false)
+  primary_color     String?  @default("#059669") @db.VarChar(7)
+  secondary_color   String?  @default("#d97706") @db.VarChar(7)
+  receipt_format    String   @default("58mm") @db.VarChar(10)
+  show_views_public Boolean  @default(true)
   created_at        DateTime @default(now()) @db.Timestamp(6)
   updated_at        DateTime @default(now()) @updatedAt @db.Timestamp(6)
 
@@ -374,4 +383,19 @@ model audit_logs {
   user users? @relation(fields: [user_id], references: [id])
 
   @@index([user_id])
+}
+
+model reports {
+  id             String       @id @default(uuid()) @db.Uuid
+  target_slug    String       @db.VarChar(60)
+  reason         String       @db.VarChar(80)
+  reporter_phone String       @db.VarChar(20)
+  description    String       @db.Text
+  evidence_urls  String[]     @default([])
+  status         ReportStatus @default(EN_ATTENTE)
+  created_at     DateTime     @default(now()) @db.Timestamp(6)
+  updated_at     DateTime     @default(now()) @updatedAt @db.Timestamp(6)
+
+  @@index([target_slug])
+  @@index([status])
 }

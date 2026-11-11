@@ -26,10 +26,6 @@ export class PurchaseLineInputDto {
   @IsString()
   unit_label!: string;
 
-  @IsOptional()
-  @IsNumber()
-  conversion_factor?: number;
-
   @IsInt({ message: 'Le coût unitaire d’achat doit être un entier en FCFA.' })
   @Min(0)
   unit_cost!: number;

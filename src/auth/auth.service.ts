@@ -77,6 +77,7 @@ export class AuthService {
             name: commerceName,
             slug: uniqueSlug,
             whatsapp_number: dto.whatsapp_number || dto.phone,
+            whatsapp_phone: dto.whatsapp_number || dto.phone,
           },
         });
       }

@@ -8,6 +8,9 @@ describe('ProductsService', () => {
   let productsService: ProductsService;
 
   const mockPrismaService = {
+    categories: {
+      findFirst: vi.fn(),
+    },
     products: {
       findMany: vi.fn(),
       findFirst: vi.fn(),
@@ -98,17 +101,19 @@ describe('ProductsService', () => {
     });
   });
 
-  describe('findOne (Tenant Isolation - BOLA)', () => {
-    it('devrait retourner le produit d un commerce donne avec son stock calcule', async () => {
+  describe('findOne (Tenant Isolation - BOLA & Exactitude du stock sans limite take)', () => {
+    it('devrait retourner le produit d un commerce donne avec son stock calcule sur tous les mouvements sans limite take: 20', async () => {
+      // 30 mouvements de stock (dépasse l'ancienne limite take: 20)
+      const movements = [
+        { quantity_delta: 100 },
+        ...Array.from({ length: 29 }, () => ({ quantity_delta: -2 })),
+      ];
       const mockProduct = {
         id: 'prod-1',
         commerce_id: commerceId,
         name: 'Savon',
         is_archived: false,
-        stock_movements: [
-          { quantity_delta: 50 },
-          { quantity_delta: -10 },
-        ],
+        stock_movements: movements,
         product_units: [],
       };
       mockPrismaService.products.findFirst.mockResolvedValueOnce(mockProduct);
@@ -124,12 +129,12 @@ describe('ProductsService', () => {
           },
           stock_movements: {
             orderBy: { created_at: 'desc' },
-            take: 20,
           },
         },
       });
       expect(result.id).toBe('prod-1');
-      expect(result.current_stock).toBe(40);
+      // 100 - (29 * 2) = 42
+      expect(result.current_stock).toBe(42);
     });
 
     it('devrait lever NotFoundException si le produit appartient a un autre commerce (BOLA)', async () => {
@@ -141,7 +146,7 @@ describe('ProductsService', () => {
     });
   });
 
-  describe('create (Multiples unites et facteurs de conversion)', () => {
+  describe('create (Multiples unites, facteurs de conversion et verification BOLA categorie)', () => {
     it('devrait refuser la creation si aucune unite n est fournie', async () => {
       await expect(
         productsService.create(commerceId, {
@@ -149,6 +154,22 @@ describe('ProductsService', () => {
           units: [],
         }),
       ).rejects.toThrow(BadRequestException);
+    });
+
+    it('devrait lever NotFoundException si category_id appartient a une autre boutique (BOLA)', async () => {
+      mockPrismaService.categories.findFirst.mockResolvedValueOnce(null);
+
+      await expect(
+        productsService.create(commerceId, {
+          name: 'Produit',
+          category_id: 'cat-other-commerce',
+          units: [{ label: 'Unité', conversion_factor: 1, retail_price: 500 }],
+        }),
+      ).rejects.toThrow(NotFoundException);
+
+      expect(mockPrismaService.categories.findFirst).toHaveBeenCalledWith({
+        where: { id: 'cat-other-commerce', commerce_id: commerceId },
+      });
     });
 
     it('devrait creer un produit avec unites multiples, facteur de conversion et mouvement initial de stock', async () => {
@@ -230,11 +251,11 @@ describe('ProductsService', () => {
       expect(result).toEqual(createdProduct);
     });
 
-    it('devrait assigner par defaut la premiere unite comme base si non explicitee', async () => {
+    it('devrait assigner par defaut la premiere unite comme base avec conversion_factor = 1', async () => {
       const dto = {
         name: 'Sucre en poudre',
         units: [
-          { label: 'Kilogramme', retail_price: 800 },
+          { label: 'Kilogramme', conversion_factor: 10, retail_price: 800 },
         ],
       };
 
@@ -245,7 +266,23 @@ describe('ProductsService', () => {
           },
           stock_movements: { create: vi.fn() },
         };
-        return callback(tx);
+        const res = await callback(tx);
+        expect(tx.products.create).toHaveBeenCalledWith(
+          expect.objectContaining({
+            data: expect.objectContaining({
+              product_units: {
+                create: [
+                  expect.objectContaining({
+                    label: 'Kilogramme',
+                    conversion_factor: 1,
+                    is_base_unit: true,
+                  }),
+                ],
+              },
+            }),
+          }),
+        );
+        return res;
       });
 
       await productsService.create(commerceId, dto);
@@ -253,7 +290,7 @@ describe('ProductsService', () => {
     });
   });
 
-  describe('update', () => {
+  describe('update (Modification et securite BOLA sur category_id)', () => {
     it('devrait mettre a jour les informations et les unites du produit', async () => {
       mockPrismaService.products.findFirst.mockResolvedValueOnce({
         id: 'prod-1',
@@ -300,9 +337,31 @@ describe('ProductsService', () => {
 
       const res = await productsService.update(commerceId, 'prod-1', {
         name: 'Nouveau',
-        units: [{ label: 'Unité', retail_price: 500, is_base_unit: true }],
+        units: [{ label: 'Unité', conversion_factor: 1, retail_price: 500, is_base_unit: true }],
       });
       expect(res.name).toBe('Nouveau');
+    });
+
+    it('devrait lever NotFoundException lors de la modification si la categorie choisie appartient a une autre boutique (BOLA)', async () => {
+      mockPrismaService.products.findFirst.mockResolvedValueOnce({
+        id: 'prod-1',
+        commerce_id: commerceId,
+        name: 'Produit',
+        is_archived: false,
+        stock_movements: [],
+      });
+      mockPrismaService.categories.findFirst.mockResolvedValueOnce(null);
+
+      await expect(
+        productsService.update(commerceId, 'prod-1', {
+          category_id: 'cat-other-shop',
+        }),
+      ).rejects.toThrow(NotFoundException);
+
+      expect(mockPrismaService.categories.findFirst).toHaveBeenCalledWith({
+        where: { id: 'cat-other-shop', commerce_id: commerceId },
+      });
+      expect(mockPrismaService.$transaction).not.toHaveBeenCalled();
     });
   });
 
