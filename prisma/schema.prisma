@@ -80,9 +80,11 @@ model commerces {
   name              String   @db.VarChar(100)
   slug              String   @unique @db.VarChar(60)
   whatsapp_number   String   @db.VarChar(20)
+  whatsapp_phone    String?  @db.VarChar(20)
   logo_url          String?  @db.Text
-  primary_color     String   @default("#1e40af") @db.VarChar(7)
-  secondary_color   String   @default("#f59e0b") @db.VarChar(7)
+  primary_color     String?  @default("#1e40af") @db.VarChar(7)
+  secondary_color   String?  @default("#f59e0b") @db.VarChar(7)
+  receipt_format    String   @default("58mm") @db.VarChar(10)
   show_views_public Boolean  @default(false)
   created_at        DateTime @default(now()) @db.Timestamp(6)
   updated_at        DateTime @default(now()) @updatedAt @db.Timestamp(6)
