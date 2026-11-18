@@ -1,8 +1,9 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { Prisma, ReportStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { TrackVisitDto } from './dto/track-visit.dto.js';
 import { GetShopProductsDto } from './dto/get-shop-products.dto.js';
+import { CreateReportDto } from './dto/create-report.dto.js';
 
 @Injectable()
 export class PublicShopService {
@@ -385,6 +386,63 @@ export class PublicShopService {
       tracked: true,
       scope: 'SHOP',
       slug: commerce.slug,
+    };
+  }
+
+  /**
+   * Enregistre un signalement citoyen public anti-fraude avec le statut initial EN_ATTENTE.
+   * Si un shop_slug valide est fourni, rattache directement le signal à l'identifiant de la boutique concernée.
+   */
+  async createReport(dto: CreateReportDto) {
+    const rawShopIdentifier = (dto.shop_identifier ?? dto.shopIdentifier ?? '').trim();
+    const rawShopSlug = (dto.shop_slug ?? dto.shopSlug ?? '').trim();
+    const reportType = (dto.report_type ?? dto.reportType ?? '').trim();
+    const reporterPhone = (dto.reporter_phone ?? dto.reporterPhone ?? '').trim();
+    const reporterName = (dto.reporter_name ?? dto.reporterName ?? '').trim();
+    const description = (dto.description ?? '').trim();
+
+    let targetIdentifier = rawShopIdentifier;
+
+    if (rawShopSlug) {
+      const normalizedSlug = rawShopSlug.toLowerCase();
+      const commerce = await this.prisma.commerces.findUnique({
+        where: { slug: normalizedSlug },
+        select: { id: true, slug: true },
+      });
+
+      if (commerce) {
+        // Rattache directement le signal à l'identifiant de la boutique concernée
+        targetIdentifier = commerce.id;
+      } else {
+        targetIdentifier = normalizedSlug;
+      }
+    }
+
+    const createdReport = await this.prisma.reports.create({
+      data: {
+        target_slug: targetIdentifier,
+        reason: reportType,
+        reporter_phone: reporterPhone,
+        description,
+        status: ReportStatus.EN_ATTENTE,
+      },
+    });
+
+    return {
+      ...createdReport,
+      shop_identifier: createdReport.target_slug,
+      shopIdentifier: createdReport.target_slug,
+      shop_slug: rawShopSlug || null,
+      shopSlug: rawShopSlug || null,
+      report_type: createdReport.reason,
+      reportType: createdReport.reason,
+      reporter_name: reporterName || null,
+      reporterName: reporterName || null,
+      reporter_phone: createdReport.reporter_phone,
+      reporterPhone: createdReport.reporter_phone,
+      targetSlug: createdReport.target_slug,
+      createdAt: createdReport.created_at,
+      updatedAt: createdReport.updated_at,
     };
   }
 }

@@ -14,6 +14,7 @@ import { Public } from '../auth/decorators/public.decorator.js';
 import { PublicShopService } from './public-shop.service.js';
 import { TrackVisitDto } from './dto/track-visit.dto.js';
 import { GetShopProductsDto } from './dto/get-shop-products.dto.js';
+import { CreateReportDto } from './dto/create-report.dto.js';
 
 const SLUG_REGEX = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
@@ -26,9 +27,16 @@ function validateSlug(slug: string): string {
 }
 
 @Public()
-@Controller(['api/v1/public/shop', 'public/shop'])
+@Controller(['api/v1/public/shop', 'public/shop', 'api/v1/public', 'public'])
 export class PublicShopController {
   constructor(private readonly publicShopService: PublicShopService) {}
+
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
+  @Post('reports')
+  @HttpCode(HttpStatus.CREATED)
+  async createReport(@Body() dto: CreateReportDto) {
+    return this.publicShopService.createReport(dto);
+  }
 
   @Get(':slug')
   async getShopBySlug(@Param('slug') slug: string) {

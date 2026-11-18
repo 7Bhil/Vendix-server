@@ -23,6 +23,13 @@ describe('PublicShopService & PublicShopController', () => {
     audit_logs: {
       create: vi.fn(),
     },
+    reports: {
+      create: vi.fn(),
+      findMany: vi.fn(),
+      findUnique: vi.fn(),
+      update: vi.fn(),
+      count: vi.fn(),
+    },
   };
 
   const shopSlug = 'maman-adjoua-boutique';
@@ -59,6 +66,17 @@ describe('PublicShopService & PublicShopController', () => {
 
       expect(jwtGuard.canActivate(mockContext)).toBe(true);
       expect(tenantGuard.canActivate(mockContext)).toBe(true);
+
+      const mockReportContext = {
+        getHandler: () => publicShopController.createReport,
+        getClass: () => PublicShopController,
+        switchToHttp: () => ({
+          getRequest: () => ({ headers: {} }),
+        }),
+      } as unknown as ExecutionContext;
+
+      expect(jwtGuard.canActivate(mockReportContext)).toBe(true);
+      expect(tenantGuard.canActivate(mockReportContext)).toBe(true);
     });
   });
 
@@ -411,6 +429,97 @@ describe('PublicShopService & PublicShopController', () => {
       await expect(
         publicShopService.trackVisit(shopSlug, { product_id: 'prod-hidden' }),
       ).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('createReport (POST /api/v1/public/reports)', () => {
+    it('devrait enregistrer un signalement avec statut initial EN_ATTENTE et lier au commerce_id si shop_slug valide', async () => {
+      mockPrismaService.commerces.findUnique.mockResolvedValueOnce({
+        id: commerceId,
+        slug: shopSlug,
+      });
+
+      const now = new Date();
+      mockPrismaService.reports.create.mockResolvedValueOnce({
+        id: 'report-uuid-1',
+        target_slug: commerceId,
+        reason: 'FRAUDE',
+        reporter_phone: '+22997001122',
+        description: 'Boutique frauduleuse signalée avec succès par client.',
+        evidence_urls: [],
+        status: 'EN_ATTENTE',
+        created_at: now,
+        updated_at: now,
+      });
+
+      const result = await publicShopService.createReport({
+        shop_identifier: 'Boutique Maman Adjoua',
+        shop_slug: shopSlug,
+        report_type: 'FRAUDE',
+        reporter_name: 'Jean Déclarant',
+        reporter_phone: '+22997001122',
+        description: 'Boutique frauduleuse signalée avec succès par client.',
+      });
+
+      expect(mockPrismaService.commerces.findUnique).toHaveBeenCalledWith({
+        where: { slug: shopSlug },
+        select: { id: true, slug: true },
+      });
+
+      expect(mockPrismaService.reports.create).toHaveBeenCalledWith({
+        data: {
+          target_slug: commerceId,
+          reason: 'FRAUDE',
+          reporter_phone: '+22997001122',
+          description: 'Boutique frauduleuse signalée avec succès par client.',
+          status: 'EN_ATTENTE',
+        },
+      });
+
+      expect(result.id).toBe('report-uuid-1');
+      expect(result.status).toBe('EN_ATTENTE');
+      expect(result.shop_identifier).toBe(commerceId);
+      expect(result.report_type).toBe('FRAUDE');
+      expect(result.reporter_phone).toBe('+22997001122');
+      expect(result.reporter_name).toBe('Jean Déclarant');
+    });
+
+    it('devrait enregistrer un signalement sans shop_slug en utilisant shop_identifier', async () => {
+      const now = new Date();
+      mockPrismaService.reports.create.mockResolvedValueOnce({
+        id: 'report-uuid-2',
+        target_slug: 'Boutique Inconnue',
+        reason: 'PRODUIT_NON_CONFORME',
+        reporter_phone: '+22997001122',
+        description: 'Produits périmés vendus aux clients.',
+        evidence_urls: [],
+        status: 'EN_ATTENTE',
+        created_at: now,
+        updated_at: now,
+      });
+
+      const result = await publicShopService.createReport({
+        shop_identifier: 'Boutique Inconnue',
+        report_type: 'PRODUIT_NON_CONFORME',
+        reporter_phone: '+22997001122',
+        description: 'Produits périmés vendus aux clients.',
+      });
+
+      expect(mockPrismaService.commerces.findUnique).not.toHaveBeenCalled();
+      expect(mockPrismaService.reports.create).toHaveBeenCalledWith({
+        data: {
+          target_slug: 'Boutique Inconnue',
+          reason: 'PRODUIT_NON_CONFORME',
+          reporter_phone: '+22997001122',
+          description: 'Produits périmés vendus aux clients.',
+          status: 'EN_ATTENTE',
+        },
+      });
+
+      expect(result.id).toBe('report-uuid-2');
+      expect(result.status).toBe('EN_ATTENTE');
+      expect(result.shop_identifier).toBe('Boutique Inconnue');
+      expect(result.reporter_name).toBeNull();
     });
   });
 });
