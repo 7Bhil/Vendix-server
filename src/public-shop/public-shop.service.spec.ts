@@ -9,7 +9,6 @@ import { TenantGuard } from '../auth/guards/tenant.guard.js';
 
 describe('PublicShopService & PublicShopController', () => {
   let publicShopService: PublicShopService;
-  let publicShopController: PublicShopController;
 
   const mockPrismaService = {
     commerces: {
@@ -39,7 +38,6 @@ describe('PublicShopService & PublicShopController', () => {
     }).compile();
 
     publicShopService = module.get<PublicShopService>(PublicShopService);
-    publicShopController = module.get<PublicShopController>(PublicShopController);
     vi.clearAllMocks();
   });
 
@@ -50,7 +48,7 @@ describe('PublicShopService & PublicShopController', () => {
       const tenantGuard = new TenantGuard(reflector);
 
       const mockContext = {
-        getHandler: () => publicShopController.getShopBySlug,
+        getHandler: () => ({}),
         getClass: () => PublicShopController,
         switchToHttp: () => ({
           getRequest: () => ({ headers: {} }),

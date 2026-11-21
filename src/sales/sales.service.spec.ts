@@ -79,7 +79,7 @@ describe('SalesService', () => {
     });
   });
 
-  describe('create (Calcul du total, snapshots, deduction de stock et modes de paiement)', () => {
+  describe('create (Verrouillage concurrent, autorite BDD des unites, anti-survente et paiements)', () => {
     it('devrait refuser une vente sans article', async () => {
       await expect(
         salesService.create(commerceId, {
@@ -90,15 +90,17 @@ describe('SalesService', () => {
       ).rejects.toThrow(BadRequestException);
     });
 
-    it('devrait creer une vente au comptant (Full payment CASH) avec snapshots et deduction de stock', async () => {
+    it('devrait poser un verrou FOR UPDATE en base et creer une vente au comptant (CASH) avec snapshots et deduction de stock', async () => {
       const mockProduct = {
         id: 'prod-riz',
+        name: 'Riz 50kg',
         commerce_id: commerceId,
         default_cost_price: 18000,
         product_units: [
-          { id: 'u-1', label: 'Sac', conversion_factor: 1, retail_price: 20000 },
-          { id: 'u-2', label: 'Kilo', conversion_factor: 0.02, retail_price: 500 },
+          { id: 'u-1', label: 'Sac', conversion_factor: 1, retail_price: 20000, is_base_unit: true },
+          { id: 'u-2', label: 'Kilo', conversion_factor: 0.02, retail_price: 500, is_base_unit: false },
         ],
+        stock_movements: [{ quantity_delta: 10 }],
       };
 
       const dto = {
@@ -110,7 +112,6 @@ describe('SalesService', () => {
             unit_label: 'Sac',
             quantity: 1,
             unit_price: 20000,
-            conversion_factor: 1,
           },
         ],
       };
@@ -138,6 +139,7 @@ describe('SalesService', () => {
 
       mockPrismaService.$transaction.mockImplementation(async (callback: (tx: any) => Promise<any>) => {
         const tx = {
+          $queryRaw: vi.fn().mockResolvedValue([{ id: 'prod-riz' }]),
           products: {
             findFirst: vi.fn().mockResolvedValue(mockProduct),
           },
@@ -154,9 +156,17 @@ describe('SalesService', () => {
 
         const res = await callback(tx);
 
+        // Vérifie que le verrou en base de données (SELECT ... FOR UPDATE) a bien été posé
+        expect(tx.$queryRaw).toHaveBeenCalledTimes(1);
+
         expect(tx.products.findFirst).toHaveBeenCalledWith({
           where: { id: 'prod-riz', commerce_id: commerceId, is_archived: false },
-          include: { product_units: true },
+          include: {
+            product_units: true,
+            stock_movements: {
+              select: { quantity_delta: true },
+            },
+          },
         });
 
         // Verification des snapshots dans la creation de vente
@@ -208,12 +218,107 @@ describe('SalesService', () => {
       expect(result).toEqual(createdSale);
     });
 
+    it('devrait empecher la survente (stock insuffisant) lorsque la quantite demandee depasse le stock disponible', async () => {
+      const mockProduct = {
+        id: 'prod-dernier',
+        name: 'Huile 5L',
+        commerce_id: commerceId,
+        default_cost_price: 4000,
+        product_units: [
+          { id: 'u-1', label: 'Bidon', conversion_factor: 1, retail_price: 5000, is_base_unit: true },
+        ],
+        // Seulement 1 bidon restant en stock
+        stock_movements: [{ quantity_delta: 5 }, { quantity_delta: -4 }],
+      };
+
+      const dto = {
+        payment_method: PaymentMethod.CASH,
+        amount_paid: 10000,
+        lines: [
+          {
+            product_id: 'prod-dernier',
+            unit_label: 'Bidon',
+            quantity: 2, // Demande 2 alors qu'il n'en reste qu'1
+            unit_price: 5000,
+          },
+        ],
+      };
+
+      mockPrismaService.$transaction.mockImplementation(async (callback: (tx: any) => Promise<any>) => {
+        const tx = {
+          $queryRaw: vi.fn().mockResolvedValue([{ id: 'prod-dernier' }]),
+          products: { findFirst: vi.fn().mockResolvedValue(mockProduct) },
+          sales: { create: vi.fn() },
+          stock_movements: { create: vi.fn() },
+        };
+        return callback(tx);
+      });
+
+      await expect(salesService.create(commerceId, dto)).rejects.toThrow(BadRequestException);
+    });
+
+    it('devrait utiliser exclusivement le facteur de conversion de la BDD et retirer exactement 10 unites pour 10 unites de base (jamais 100)', async () => {
+      const mockProduct = {
+        id: 'prod-savon',
+        name: 'Savon',
+        commerce_id: commerceId,
+        default_cost_price: 200,
+        product_units: [
+          // Même si conversion_factor en BDD ou envoyé par erreur valait 10 sur l'unité de base, is_base_unit garantit 1
+          { id: 'u-base', label: 'Pièce', conversion_factor: 10, retail_price: 250, is_base_unit: true },
+          { id: 'u-carton', label: 'Carton de 10', conversion_factor: 10, retail_price: 2400, is_base_unit: false },
+        ],
+        stock_movements: [{ quantity_delta: 50 }],
+      };
+
+      const dto = {
+        payment_method: PaymentMethod.CASH,
+        amount_paid: 2500,
+        lines: [
+          {
+            product_id: 'prod-savon',
+            unit_label: 'Pièce',
+            quantity: 10,
+            unit_price: 250,
+            // Même si un appelant interne passait conversion_factor: 10, il est ignoré
+            ...({ conversion_factor: 10 } as Record<string, unknown>),
+          },
+        ],
+      };
+
+      mockPrismaService.$transaction.mockImplementation(async (callback: (tx: any) => Promise<any>) => {
+        const tx = {
+          $queryRaw: vi.fn().mockResolvedValue([{ id: 'prod-savon' }]),
+          products: { findFirst: vi.fn().mockResolvedValue(mockProduct) },
+          sales: { create: vi.fn().mockResolvedValue({ id: 'sale-10-pieces' }) },
+          stock_movements: { create: vi.fn() },
+          customers: { update: vi.fn() },
+        };
+
+        await callback(tx);
+
+        // 10 pièces d'unité de base retirent exactement -10 (et jamais -100)
+        expect(tx.stock_movements.create).toHaveBeenCalledWith({
+          data: {
+            commerce_id: commerceId,
+            product_id: 'prod-savon',
+            type: StockMovementType.SALE,
+            quantity_delta: -10,
+            reason: 'Vente comptoir',
+          },
+        });
+      });
+
+      await salesService.create(commerceId, dto);
+    });
+
     it('devrait lever BadRequestException pour une vente a credit sans customer_id', async () => {
       const mockProduct = {
         id: 'prod-riz',
         commerce_id: commerceId,
         default_cost_price: 18000,
-        product_units: [{ id: 'u-1', label: 'Sac', conversion_factor: 1, retail_price: 20000 }],
+        product_units: [{ id: 'u-1', label: 'Sac', conversion_factor: 1, retail_price: 20000, is_base_unit: true }],
+        stock_movements: [{ quantity_delta: 10 }],
       };
 
       const dto = {
@@ -231,6 +336,7 @@ describe('SalesService', () => {
 
       mockPrismaService.$transaction.mockImplementation(async (callback: (tx: any) => Promise<any>) => {
         const tx = {
+          $queryRaw: vi.fn().mockResolvedValue([{ id: 'prod-riz' }]),
           products: { findFirst: vi.fn().mockResolvedValue(mockProduct) },
         };
         return callback(tx);
@@ -244,7 +350,8 @@ describe('SalesService', () => {
         id: 'prod-riz',
         commerce_id: commerceId,
         default_cost_price: 15000,
-        product_units: [{ id: 'u-1', label: 'Sac', conversion_factor: 1, retail_price: 20000 }],
+        product_units: [{ id: 'u-1', label: 'Sac', conversion_factor: 1, retail_price: 20000, is_base_unit: true }],
+        stock_movements: [{ quantity_delta: 10 }],
       };
 
       const dto = {
@@ -263,6 +370,7 @@ describe('SalesService', () => {
 
       mockPrismaService.$transaction.mockImplementation(async (callback: (tx: any) => Promise<any>) => {
         const tx = {
+          $queryRaw: vi.fn().mockResolvedValue([{ id: 'prod-riz' }]),
           products: { findFirst: vi.fn().mockResolvedValue(mockProduct) },
           sales: {
             create: vi.fn().mockResolvedValue({
@@ -309,7 +417,8 @@ describe('SalesService', () => {
         id: 'prod-lait',
         commerce_id: commerceId,
         default_cost_price: 2000,
-        product_units: [{ id: 'u-1', label: 'Carton', conversion_factor: 1, retail_price: 3500 }],
+        product_units: [{ id: 'u-1', label: 'Carton', conversion_factor: 1, retail_price: 3500, is_base_unit: true }],
+        stock_movements: [{ quantity_delta: 20 }],
       };
 
       const dto = {
@@ -328,6 +437,7 @@ describe('SalesService', () => {
 
       mockPrismaService.$transaction.mockImplementation(async (callback: (tx: any) => Promise<any>) => {
         const tx = {
+          $queryRaw: vi.fn().mockResolvedValue([{ id: 'prod-lait' }]),
           products: { findFirst: vi.fn().mockResolvedValue(mockProduct) },
           sales: {
             create: vi.fn().mockResolvedValue({
@@ -357,15 +467,16 @@ describe('SalesService', () => {
       expect(res.debt_amount).toBe(7000);
     });
 
-    it('devrait deduire le stock selon le conversionFactor pour une unite derivee', async () => {
+    it('devrait deduire le stock selon le conversion_factor de la BDD pour une unite derivee (Carton)', async () => {
       const mockProduct = {
         id: 'prod-carton',
         commerce_id: commerceId,
         default_cost_price: 500,
         product_units: [
-          { id: 'u-1', label: 'Pièce', conversion_factor: 1, retail_price: 600 },
-          { id: 'u-2', label: 'Carton de 24', conversion_factor: 24, retail_price: 14000 },
+          { id: 'u-1', label: 'Pièce', conversion_factor: 1, retail_price: 600, is_base_unit: true },
+          { id: 'u-2', label: 'Carton de 24', conversion_factor: 24, retail_price: 14000, is_base_unit: false },
         ],
+        stock_movements: [{ quantity_delta: 100 }],
       };
 
       const dto = {
@@ -377,13 +488,13 @@ describe('SalesService', () => {
             unit_label: 'Carton de 24',
             quantity: 2,
             unit_price: 14000,
-            conversion_factor: 24,
           },
         ],
       };
 
       mockPrismaService.$transaction.mockImplementation(async (callback: (tx: any) => Promise<any>) => {
         const tx = {
+          $queryRaw: vi.fn().mockResolvedValue([{ id: 'prod-carton' }]),
           products: { findFirst: vi.fn().mockResolvedValue(mockProduct) },
           sales: {
             create: vi.fn().mockResolvedValue({ id: 'sale-derived-unit' }),
@@ -394,7 +505,7 @@ describe('SalesService', () => {
 
         await callback(tx);
 
-        // 2 cartons x 24 = 48 pieces deduites
+        // 2 cartons x 24 (issu de la BDD) = 48 pieces deduites
         expect(tx.stock_movements.create).toHaveBeenCalledWith({
           data: {
             commerce_id: commerceId,
