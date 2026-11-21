@@ -540,4 +540,103 @@ describe('SalesService', () => {
       expect(mockPrismaService.$transaction).not.toHaveBeenCalled();
     });
   });
+
+  describe('getSummary (GET /api/v1/sales/summary)', () => {
+    it('calcule le chiffre d affaires, le coût des marchandises, la marge brute et le top produits', async () => {
+      mockPrismaService.sales.findMany.mockResolvedValueOnce([
+        {
+          id: 'sale-1',
+          total_amount: 15000,
+          items: [
+            {
+              product_id: 'prod-1',
+              quantity: 2,
+              conversion_rate_snap: 1,
+              unit_price_snapshot: 5000,
+              cost_price_snapshot: 3000,
+              subtotal: 10000,
+              product: { id: 'prod-1', name: 'Riz 5kg' },
+            },
+            {
+              product_id: 'prod-2',
+              quantity: 1,
+              conversion_rate_snap: 1,
+              unit_price_snapshot: 5000,
+              cost_price_snapshot: 3500,
+              subtotal: 5000,
+              product: { id: 'prod-2', name: 'Huile 1L' },
+            },
+          ],
+        },
+        {
+          id: 'sale-2',
+          total_amount: 10000,
+          items: [
+            {
+              product_id: 'prod-2',
+              quantity: 2,
+              conversion_rate_snap: 1,
+              unit_price_snapshot: 5000,
+              cost_price_snapshot: 3500,
+              subtotal: 10000,
+              product: { id: 'prod-2', name: 'Huile 1L' },
+            },
+          ],
+        },
+      ]);
+
+      const summary = await salesService.getSummary(commerceId, {
+        startDate: '2026-11-01T00:00:00.000Z',
+        endDate: '2026-11-30T23:59:59.999Z',
+      });
+
+      expect(mockPrismaService.sales.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            commerce_id: commerceId,
+            status: { not: SaleStatus.CANCELLED },
+            created_at: {
+              gte: new Date('2026-11-01T00:00:00.000Z'),
+              lte: new Date('2026-11-30T23:59:59.999Z'),
+            },
+          },
+        }),
+      );
+      expect(summary).toEqual({
+        total_revenue: 25000,
+        cost_of_goods_sold: 16500,
+        gross_profit: 8500,
+        top_products: [
+          { product_id: 'prod-2', name: 'Huile 1L', quantity: 3, revenue: 15000 },
+          { product_id: 'prod-1', name: 'Riz 5kg', quantity: 2, revenue: 10000 },
+        ],
+      });
+    });
+
+    it('retourne des zéros et une liste vide s il n y a aucune vente sur la période', async () => {
+      mockPrismaService.sales.findMany.mockResolvedValueOnce([]);
+
+      const summary = await salesService.getSummary(commerceId);
+
+      expect(summary).toEqual({
+        total_revenue: 0,
+        cost_of_goods_sold: 0,
+        gross_profit: 0,
+        top_products: [],
+      });
+    });
+
+    it('rejette une date invalide ou inversée avec BadRequestException', async () => {
+      await expect(
+        salesService.getSummary(commerceId, { startDate: 'not-a-date' }),
+      ).rejects.toThrow(BadRequestException);
+
+      await expect(
+        salesService.getSummary(commerceId, {
+          startDate: '2026-11-30T00:00:00.000Z',
+          endDate: '2026-11-01T00:00:00.000Z',
+        }),
+      ).rejects.toThrow(BadRequestException);
+    });
+  });
 });
