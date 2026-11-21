@@ -27,6 +27,104 @@ export class SalesService {
     });
   }
 
+  async getSummary(
+    commerceId: string,
+    filters?: { startDate?: string; endDate?: string },
+  ) {
+    const createdAtFilter: Prisma.DateTimeFilter = {};
+
+    if (filters?.startDate) {
+      const parsedStart = new Date(filters.startDate);
+      if (Number.isNaN(parsedStart.getTime())) {
+        throw new BadRequestException('Le paramètre startDate est invalide.');
+      }
+      createdAtFilter.gte = parsedStart;
+    }
+
+    if (filters?.endDate) {
+      const parsedEnd = new Date(filters.endDate);
+      if (Number.isNaN(parsedEnd.getTime())) {
+        throw new BadRequestException('Le paramètre endDate est invalide.');
+      }
+      createdAtFilter.lte = parsedEnd;
+    }
+
+    if (
+      createdAtFilter.gte &&
+      createdAtFilter.lte &&
+      createdAtFilter.gte > createdAtFilter.lte
+    ) {
+      throw new BadRequestException(
+        'startDate doit être antérieure ou égale à endDate.',
+      );
+    }
+
+    const sales = await this.prisma.sales.findMany({
+      where: {
+        commerce_id: commerceId,
+        status: { not: SaleStatus.CANCELLED },
+        ...(Object.keys(createdAtFilter).length > 0
+          ? { created_at: createdAtFilter }
+          : {}),
+      },
+      include: {
+        items: {
+          include: {
+            product: {
+              select: { id: true, name: true },
+            },
+          },
+        },
+      },
+    });
+
+    let totalRevenue = 0;
+    let costOfGoodsSold = 0;
+    const productTotals = new Map<
+      string,
+      { product_id: string; name: string; quantity: number; revenue: number }
+    >();
+
+    for (const sale of sales) {
+      totalRevenue += Number(sale.total_amount ?? 0);
+
+      for (const item of sale.items ?? []) {
+        const quantity = Number(item.quantity ?? 0);
+        const conversion = Number(item.conversion_rate_snap ?? 1);
+        const costPrice = Number(item.cost_price_snapshot ?? 0);
+        const itemRevenue = Number(
+          item.subtotal ?? Math.round(quantity * Number(item.unit_price_snapshot ?? 0)),
+        );
+
+        costOfGoodsSold += Math.round(quantity * conversion * costPrice);
+
+        const existing = productTotals.get(item.product_id);
+        if (existing) {
+          existing.quantity += quantity;
+          existing.revenue += itemRevenue;
+        } else {
+          productTotals.set(item.product_id, {
+            product_id: item.product_id,
+            name: item.product?.name ?? 'Produit',
+            quantity,
+            revenue: itemRevenue,
+          });
+        }
+      }
+    }
+
+    const topProducts = Array.from(productTotals.values())
+      .sort((a, b) => b.revenue - a.revenue)
+      .slice(0, 10);
+
+    return {
+      total_revenue: totalRevenue,
+      cost_of_goods_sold: costOfGoodsSold,
+      gross_profit: totalRevenue - costOfGoodsSold,
+      top_products: topProducts,
+    };
+  }
+
   async findOne(commerceId: string, id: string) {
     const sale = await this.prisma.sales.findFirst({
       where: { id, commerce_id: commerceId },
