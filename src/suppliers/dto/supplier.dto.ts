@@ -19,7 +19,7 @@ export class CreateSupplierDto {
   @IsOptional()
   @IsString()
   @Matches(/^\+[1-9]\d{7,14}$/, {
-    message: 'Le téléphone doit respecter le format international E.164 (ex: +229XXXXXXXX).',
+    message: 'Le téléphone doit respecter le format international E.164 (ex: +22901XXXXXXXX).',
   })
   phone?: string;
 }
@@ -33,7 +33,7 @@ export class UpdateSupplierDto {
   @IsOptional()
   @IsString()
   @Matches(/^\+[1-9]\d{7,14}$/, {
-    message: 'Le téléphone doit respecter le format international E.164 (ex: +229XXXXXXXX).',
+    message: 'Le téléphone doit respecter le format international E.164 (ex: +22901XXXXXXXX).',
   })
   phone?: string;
 }

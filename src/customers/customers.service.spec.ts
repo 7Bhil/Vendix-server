@@ -42,7 +42,7 @@ describe('CustomersService', () => {
   describe('findAll and findDebtors', () => {
     it('devrait retourner les clients du commerce avec filtrage', async () => {
       const mockList = [
-        { id: 'c-1', full_name: 'Moussa Bello', phone: '+22997000001', outstanding_debt: 5000 },
+        { id: 'c-1', full_name: 'Moussa Bello', phone: '+2290197000001', outstanding_debt: 5000 },
       ];
       mockPrismaService.customers.findMany.mockResolvedValueOnce(mockList);
 
@@ -73,7 +73,7 @@ describe('CustomersService', () => {
         {
           id: 'deb-1',
           full_name: 'Awa Cisse',
-          phone: '+22996000002',
+          phone: '+2290196000002',
           outstanding_debt: 12000,
           created_at: new Date(),
           sales: [{ created_at: pastDate }],
@@ -140,27 +140,27 @@ describe('CustomersService', () => {
         id: 'cust-new',
         commerce_id: commerceId,
         full_name: 'Bio Chabi',
-        phone: '+22995000003',
+        phone: '+2290195000003',
         outstanding_debt: 0,
       };
       mockPrismaService.customers.create.mockResolvedValueOnce(createdCustomer);
 
       const result = await customersService.create(commerceId, {
         full_name: 'Bio Chabi',
-        phone: '+22995000003',
+        phone: '+2290195000003',
       });
 
       expect(mockPrismaService.customers.findFirst).toHaveBeenCalledWith({
         where: {
           commerce_id: commerceId,
-          phone: '+22995000003',
+          phone: '+2290195000003',
         },
       });
       expect(mockPrismaService.customers.create).toHaveBeenCalledWith({
         data: {
           commerce_id: commerceId,
           full_name: 'Bio Chabi',
-          phone: '+22995000003',
+          phone: '+2290195000003',
           outstanding_debt: 0,
         },
       });
@@ -171,13 +171,13 @@ describe('CustomersService', () => {
       mockPrismaService.customers.findFirst.mockResolvedValueOnce({
         id: 'existing-cust',
         commerce_id: commerceId,
-        phone: '+22995000003',
+        phone: '+2290195000003',
       });
 
       await expect(
         customersService.create(commerceId, {
           full_name: 'Bio Chabi Bis',
-          phone: '+22995000003',
+          phone: '+2290195000003',
         }),
       ).rejects.toThrow(ConflictException);
 
@@ -188,11 +188,11 @@ describe('CustomersService', () => {
   describe('update', () => {
     it('devrait refuser la modification si le nouveau telephone est deja utilise par un autre client', async () => {
       mockPrismaService.customers.findFirst
-        .mockResolvedValueOnce({ id: 'c-1', commerce_id: commerceId, phone: '+22990000000' })
-        .mockResolvedValueOnce({ id: 'c-2', commerce_id: commerceId, phone: '+22991111111' });
+        .mockResolvedValueOnce({ id: 'c-1', commerce_id: commerceId, phone: '+2290190000000' })
+        .mockResolvedValueOnce({ id: 'c-2', commerce_id: commerceId, phone: '+2290191111111' });
 
       await expect(
-        customersService.update(commerceId, 'c-1', { phone: '+22991111111' }),
+        customersService.update(commerceId, 'c-1', { phone: '+2290191111111' }),
       ).rejects.toThrow(ConflictException);
     });
 
@@ -203,12 +203,12 @@ describe('CustomersService', () => {
       mockPrismaService.customers.update.mockResolvedValueOnce({
         id: 'c-1',
         full_name: 'Nouveau Nom',
-        phone: '+22992222222',
+        phone: '+2290192222222',
       });
 
       const result = await customersService.update(commerceId, 'c-1', {
         full_name: 'Nouveau Nom',
-        phone: '+22992222222',
+        phone: '+2290192222222',
       });
 
       expect(result.full_name).toBe('Nouveau Nom');
@@ -360,7 +360,7 @@ describe('CustomersService', () => {
         id: 'c-debtor',
         commerce_id: commerceId,
         full_name: 'Kofi Mensah',
-        phone: '+229 97-00-11-22',
+        phone: '+229 01-97-00-11-22',
         outstanding_debt: 25000,
       });
       mockPrismaService.commerces.findUnique.mockResolvedValueOnce({
@@ -373,7 +373,7 @@ describe('CustomersService', () => {
       expect(result.customer_id).toBe('c-debtor');
       expect(result.customer_name).toBe('Kofi Mensah');
       expect(result.amount_due).toBe(25000);
-      expect(result.whatsapp_url).toContain('https://wa.me/22997001122?text=');
+      expect(result.whatsapp_url).toContain('https://wa.me/2290197001122?text=');
       expect(decodeURIComponent(result.whatsapp_url)).toContain('Kofi Mensah');
       expect(decodeURIComponent(result.whatsapp_url)).toContain('Boutique Le Progrès');
       expect(decodeURIComponent(result.whatsapp_url)).toContain('FCFA');

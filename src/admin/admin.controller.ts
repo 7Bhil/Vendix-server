@@ -24,7 +24,7 @@ export class AdminController {
       {
         id: 'm-001',
         fullName: 'Mme Dossou Bernadette',
-        phone: '+22997001122',
+        phone: '+2290197001122',
         storeName: 'Épicerie du Port',
         slug: 'epicerie-du-port',
         status: 'ACTIF',

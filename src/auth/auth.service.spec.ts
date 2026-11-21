@@ -43,7 +43,7 @@ describe('AuthService', () => {
 
       await expect(
         authService.register({
-          phone: '+22997000000',
+          phone: '+2290197000000',
           password: 'Password123',
         }),
       ).rejects.toThrow(ConflictException);
@@ -56,7 +56,7 @@ describe('AuthService', () => {
 
       await expect(
         authService.login({
-          phone: '+22997000000',
+          phone: '+2290197000000',
           password: 'Password123',
         }),
       ).rejects.toThrow(UnauthorizedException);
