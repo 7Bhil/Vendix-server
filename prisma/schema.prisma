@@ -399,3 +399,19 @@ model reports {
   @@index([target_slug])
   @@index([status])
 }
+
+model admin_audit_logs {
+  id          String   @id @default(uuid()) @db.Uuid
+  timestamp   DateTime @default(now()) @db.Timestamp(6)
+  admin_id    String   @db.VarChar(80)
+  admin_name  String   @db.VarChar(120)
+  action      String   @db.VarChar(50)
+  target_type String   @db.VarChar(40)
+  target_id   String   @db.VarChar(80)
+  target_name String   @db.VarChar(160)
+  reason      String   @db.Text
+  ip_address  String?  @db.VarChar(64)
+
+  @@index([timestamp])
+  @@index([action])
+}

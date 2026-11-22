@@ -15,6 +15,10 @@ describe('AdminController', () => {
       update: vi.fn(),
       count: vi.fn(),
     },
+    admin_audit_logs: {
+      findMany: vi.fn(),
+      create: vi.fn(),
+    },
   };
 
   beforeEach(async () => {
@@ -148,6 +152,59 @@ describe('AdminController', () => {
           status: ReportStatus.RESOLU,
         }),
       ).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('getAuditLogs & traçabilité', () => {
+    it('devrait enregistrer une entrée d audit lors de la suspension d un commerçant', async () => {
+      await adminController.suspendMerchant(
+        'm-001',
+        { reason: 'Fraude avérée', targetName: 'Épicerie du Port' },
+        { user: { id: 'admin-1', full_name: 'Bhilal C.' }, ip: '197.234.221.10' },
+      );
+
+      expect(mockPrismaService.admin_audit_logs.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          admin_id: 'admin-1',
+          admin_name: 'Bhilal C.',
+          action: 'SUSPEND_MERCHANT',
+          target_type: 'SHOP',
+          target_id: 'm-001',
+          target_name: 'Épicerie du Port',
+          reason: 'Fraude avérée',
+          ip_address: '197.234.221.10',
+        }),
+      });
+    });
+
+    it('devrait retourner les journaux d audit filtrés par action', async () => {
+      const now = new Date();
+      mockPrismaService.admin_audit_logs.findMany.mockResolvedValueOnce([
+        {
+          id: 'audit-1',
+          timestamp: now,
+          admin_id: 'admin-1',
+          admin_name: 'Bhilal C.',
+          action: 'SUSPEND_MERCHANT',
+          target_type: 'SHOP',
+          target_id: 'm-001',
+          target_name: 'Épicerie du Port',
+          reason: 'Fraude avérée',
+          ip_address: '197.234.221.10',
+        },
+      ]);
+
+      const logs = await adminController.getAuditLogs('SUSPEND_MERCHANT', 'Port');
+
+      expect(mockPrismaService.admin_audit_logs.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ action: 'SUSPEND_MERCHANT' }),
+          orderBy: { timestamp: 'desc' },
+        }),
+      );
+      expect(logs).toHaveLength(1);
+      expect(logs[0].action).toBe('SUSPEND_MERCHANT');
+      expect(logs[0].targetName).toBe('Épicerie du Port');
     });
   });
 });
