@@ -226,17 +226,8 @@ export class SalesService {
           (cumulativeRequiredByProduct.get(product.id) ?? 0) + requiredBaseQty;
         cumulativeRequiredByProduct.set(product.id, totalRequiredForProduct);
 
-        const availableStock = (product.stock_movements ?? []).reduce(
-          (acc, sm) => acc + Number(sm.quantity_delta),
-          0,
-        );
-
-        if (availableStock < totalRequiredForProduct) {
-          throw new BadRequestException(
-            `Stock insuffisant pour le produit "${product.name ?? product.id}" (disponible : ${availableStock}, requis : ${totalRequiredForProduct}).`,
-          );
-        }
-
+        // Règle d'Or n°2 : la vente en stock négatif est autorisée au comptoir.
+        // Le stock peut devenir négatif et sera régularisé lors du réapprovisionnement.
         const unitPrice = line.unit_price;
         const subtotal = Math.round(lineQuantity * unitPrice);
         totalAmount += subtotal;

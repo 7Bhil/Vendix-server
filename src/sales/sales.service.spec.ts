@@ -218,7 +218,7 @@ describe('SalesService', () => {
       expect(result).toEqual(createdSale);
     });
 
-    it('devrait empecher la survente (stock insuffisant) lorsque la quantite demandee depasse le stock disponible', async () => {
+    it('devrait autoriser la vente en stock negatif (Regle d Or n°2) et enregistrer la deduction dans stock_movements', async () => {
       const mockProduct = {
         id: 'prod-dernier',
         name: 'Huile 5L',
@@ -227,7 +227,7 @@ describe('SalesService', () => {
         product_units: [
           { id: 'u-1', label: 'Bidon', conversion_factor: 1, retail_price: 5000, is_base_unit: true },
         ],
-        // Seulement 1 bidon restant en stock
+        // Seulement 1 bidon restant en stock -> le stock passera a -1
         stock_movements: [{ quantity_delta: 5 }, { quantity_delta: -4 }],
       };
 
@@ -244,17 +244,31 @@ describe('SalesService', () => {
         ],
       };
 
+      const createdSale = { id: 'sale-negative-stock', total_amount: 10000 };
+      const stockCreateSpy = vi.fn().mockResolvedValue({ id: 'sm-neg-1' });
+
       mockPrismaService.$transaction.mockImplementation(async (callback: (tx: any) => Promise<any>) => {
         const tx = {
           $queryRaw: vi.fn().mockResolvedValue([{ id: 'prod-dernier' }]),
           products: { findFirst: vi.fn().mockResolvedValue(mockProduct) },
-          sales: { create: vi.fn() },
-          stock_movements: { create: vi.fn() },
+          sales: { create: vi.fn().mockResolvedValue(createdSale) },
+          stock_movements: { create: stockCreateSpy },
+          customers: { update: vi.fn() },
         };
         return callback(tx);
       });
 
-      await expect(salesService.create(commerceId, dto)).rejects.toThrow(BadRequestException);
+      const result = await salesService.create(commerceId, dto);
+      expect(result).toEqual(createdSale);
+      expect(stockCreateSpy).toHaveBeenCalledWith({
+        data: {
+          commerce_id: commerceId,
+          product_id: 'prod-dernier',
+          type: StockMovementType.SALE,
+          quantity_delta: -2,
+          reason: 'Vente comptoir',
+        },
+      });
     });
 
     it('devrait utiliser exclusivement le facteur de conversion de la BDD et retirer exactement 10 unites pour 10 unites de base (jamais 100)', async () => {
