@@ -1,0 +1,210 @@
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { Test, TestingModule } from '@nestjs/testing';
+import { NotFoundException } from '@nestjs/common';
+import { AdminController } from './admin.controller.js';
+import { PrismaService } from '../prisma/prisma.service.js';
+import { ReportStatus } from '@prisma/client';
+
+describe('AdminController', () => {
+  let adminController: AdminController;
+
+  const mockPrismaService = {
+    reports: {
+      findMany: vi.fn(),
+      findUnique: vi.fn(),
+      update: vi.fn(),
+      count: vi.fn(),
+    },
+    admin_audit_logs: {
+      findMany: vi.fn(),
+      create: vi.fn(),
+    },
+  };
+
+  beforeEach(async () => {
+    const module: TestingModule = await Test.createTestingModule({
+      controllers: [AdminController],
+      providers: [
+        { provide: PrismaService, useValue: mockPrismaService },
+      ],
+    }).compile();
+
+    adminController = module.get<AdminController>(AdminController);
+    vi.clearAllMocks();
+  });
+
+  describe('getDashboardStats', () => {
+    it('devrait retourner le compte réel des signalements EN_ATTENTE', async () => {
+      mockPrismaService.reports.count.mockResolvedValueOnce(7);
+
+      const stats = await adminController.getDashboardStats();
+
+      expect(mockPrismaService.reports.count).toHaveBeenCalledWith({
+        where: { status: ReportStatus.EN_ATTENTE },
+      });
+      expect(stats.pendingReports).toBe(7);
+      expect(stats.totalMerchants).toBe(42);
+    });
+  });
+
+  describe('getMerchants & suspendMerchant', () => {
+    it('devrait retourner la liste des commerçants', async () => {
+      const merchants = await adminController.getMerchants();
+
+      expect(Array.isArray(merchants)).toBe(true);
+      expect(merchants.length).toBeGreaterThan(0);
+      expect(merchants[0]).toHaveProperty('id');
+      expect(merchants[0]).toHaveProperty('fullName');
+      expect(merchants[0]).toHaveProperty('phone');
+      expect(merchants[0]).toHaveProperty('status', 'ACTIF');
+    });
+
+    it('devrait enregistrer la suspension d’un commerçant avec motif obligatoire ou par défaut', async () => {
+      const res = await adminController.suspendMerchant('m-001', { reason: 'Litige non résolu' });
+
+      expect(res).toEqual({
+        success: true,
+        id: 'm-001',
+        status: 'SUSPENDU',
+        reason: 'Litige non résolu',
+      });
+    });
+  });
+
+  describe('getReports', () => {
+    it('devrait retourner la liste des signalements enregistrés dans PostgreSQL', async () => {
+      const now = new Date();
+      const mockReports = [
+        {
+          id: 'rep-1',
+          target_slug: 'comm-uuid-1',
+          reason: 'FRAUDE',
+          reporter_phone: '+2290197001122',
+          description: 'Boutique frauduleuse signalée par un client',
+          evidence_urls: [],
+          status: ReportStatus.EN_ATTENTE,
+          created_at: now,
+          updated_at: now,
+        },
+      ];
+
+      mockPrismaService.reports.findMany.mockResolvedValueOnce(mockReports);
+
+      const result = await adminController.getReports();
+
+      expect(mockPrismaService.reports.findMany).toHaveBeenCalledWith({
+        where: undefined,
+        orderBy: { created_at: 'desc' },
+      });
+      expect(result).toHaveLength(1);
+      expect(result[0].id).toBe('rep-1');
+      expect(result[0].shop_identifier).toBe('comm-uuid-1');
+      expect(result[0].report_type).toBe('FRAUDE');
+      expect(result[0].reporter_phone).toBe('+2290197001122');
+      expect(result[0].status).toBe(ReportStatus.EN_ATTENTE);
+    });
+
+    it('devrait filtrer les signalements par statut si spécifié', async () => {
+      mockPrismaService.reports.findMany.mockResolvedValueOnce([]);
+
+      await adminController.getReports(ReportStatus.EN_COURS);
+
+      expect(mockPrismaService.reports.findMany).toHaveBeenCalledWith({
+        where: { status: ReportStatus.EN_COURS },
+        orderBy: { created_at: 'desc' },
+      });
+    });
+  });
+
+  describe('updateReport', () => {
+    it('devrait mettre à jour le statut d’un signalement existant', async () => {
+      const now = new Date();
+      mockPrismaService.reports.findUnique.mockResolvedValueOnce({
+        id: 'rep-1',
+        status: ReportStatus.EN_ATTENTE,
+      });
+      mockPrismaService.reports.update.mockResolvedValueOnce({
+        id: 'rep-1',
+        status: ReportStatus.RESOLU,
+        updated_at: now,
+      });
+
+      const result = await adminController.updateReport('rep-1', {
+        status: ReportStatus.RESOLU,
+      });
+
+      expect(mockPrismaService.reports.findUnique).toHaveBeenCalledWith({
+        where: { id: 'rep-1' },
+      });
+      expect(mockPrismaService.reports.update).toHaveBeenCalledWith({
+        where: { id: 'rep-1' },
+        data: { status: ReportStatus.RESOLU },
+      });
+      expect(result.success).toBe(true);
+      expect(result.status).toBe(ReportStatus.RESOLU);
+    });
+
+    it('devrait lever NotFoundException si le signalement n’existe pas', async () => {
+      mockPrismaService.reports.findUnique.mockResolvedValueOnce(null);
+
+      await expect(
+        adminController.updateReport('non-existent-id', {
+          status: ReportStatus.RESOLU,
+        }),
+      ).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('getAuditLogs & traçabilité', () => {
+    it('devrait enregistrer une entrée d audit lors de la suspension d un commerçant', async () => {
+      await adminController.suspendMerchant(
+        'm-001',
+        { reason: 'Fraude avérée', targetName: 'Épicerie du Port' },
+        { user: { id: 'admin-1', full_name: 'Bhilal C.' }, ip: '197.234.221.10' },
+      );
+
+      expect(mockPrismaService.admin_audit_logs.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          admin_id: 'admin-1',
+          admin_name: 'Bhilal C.',
+          action: 'SUSPEND_MERCHANT',
+          target_type: 'SHOP',
+          target_id: 'm-001',
+          target_name: 'Épicerie du Port',
+          reason: 'Fraude avérée',
+          ip_address: '197.234.221.10',
+        }),
+      });
+    });
+
+    it('devrait retourner les journaux d audit filtrés par action', async () => {
+      const now = new Date();
+      mockPrismaService.admin_audit_logs.findMany.mockResolvedValueOnce([
+        {
+          id: 'audit-1',
+          timestamp: now,
+          admin_id: 'admin-1',
+          admin_name: 'Bhilal C.',
+          action: 'SUSPEND_MERCHANT',
+          target_type: 'SHOP',
+          target_id: 'm-001',
+          target_name: 'Épicerie du Port',
+          reason: 'Fraude avérée',
+          ip_address: '197.234.221.10',
+        },
+      ]);
+
+      const logs = await adminController.getAuditLogs('SUSPEND_MERCHANT', 'Port');
+
+      expect(mockPrismaService.admin_audit_logs.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ action: 'SUSPEND_MERCHANT' }),
+          orderBy: { timestamp: 'desc' },
+        }),
+      );
+      expect(logs).toHaveLength(1);
+      expect(logs[0].action).toBe('SUSPEND_MERCHANT');
+      expect(logs[0].targetName).toBe('Épicerie du Port');
+    });
+  });
+});

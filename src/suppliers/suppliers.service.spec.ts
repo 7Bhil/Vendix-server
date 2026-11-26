@@ -47,7 +47,7 @@ describe('SuppliersService', () => {
           id: 'sup-1',
           commerce_id: commerceId,
           name: 'Grossiste Dantokpa',
-          phone: '+22997112233',
+          phone: '+2290197112233',
           outstanding_debt: 45000,
           created_at: new Date(),
           updated_at: new Date(),
@@ -75,7 +75,7 @@ describe('SuppliersService', () => {
         },
       });
       expect(result[0].amountDue).toBe(45000);
-      expect(result[0].whatsappContact).toBe('https://wa.me/22997112233');
+      expect(result[0].whatsappContact).toBe('https://wa.me/2290197112233');
     });
   });
 
@@ -85,7 +85,7 @@ describe('SuppliersService', () => {
         id: 'sup-1',
         commerce_id: commerceId,
         name: 'Grossiste Dantokpa',
-        phone: '+22997112233',
+        phone: '+2290197112233',
         outstanding_debt: 15000,
         purchases: [],
         payments: [],
@@ -114,39 +114,39 @@ describe('SuppliersService', () => {
         id: 'sup-new',
         commerce_id: commerceId,
         name: 'Ets Sodeco',
-        phone: '+22995001122',
+        phone: '+2290195001122',
         outstanding_debt: 0,
       };
       mockPrismaService.suppliers.create.mockResolvedValueOnce(created);
 
       const result = await suppliersService.create(commerceId, {
         name: 'Ets Sodeco',
-        phone: '+22995001122',
+        phone: '+2290195001122',
       });
 
       expect(mockPrismaService.suppliers.create).toHaveBeenCalledWith({
         data: {
           commerce_id: commerceId,
           name: 'Ets Sodeco',
-          phone: '+22995001122',
+          phone: '+2290195001122',
           outstanding_debt: 0,
         },
       });
       expect(result.amountDue).toBe(0);
-      expect(result.whatsappContact).toBe('https://wa.me/22995001122');
+      expect(result.whatsappContact).toBe('https://wa.me/2290195001122');
     });
 
     it('devrait lever ConflictException si le numero existe deja dans la boutique', async () => {
       mockPrismaService.suppliers.findFirst.mockResolvedValueOnce({
         id: 'sup-existing',
         commerce_id: commerceId,
-        phone: '+22995001122',
+        phone: '+2290195001122',
       });
 
       await expect(
         suppliersService.create(commerceId, {
           name: 'Autre Fournisseur',
-          phone: '+22995001122',
+          phone: '+2290195001122',
         }),
       ).rejects.toThrow(ConflictException);
     });
@@ -158,7 +158,7 @@ describe('SuppliersService', () => {
         id: 'sup-1',
         commerce_id: commerceId,
         name: 'Fournisseur Zero Dette',
-        phone: '+22990000000',
+        phone: '+2290190000000',
         outstanding_debt: 0,
       });
 
@@ -175,7 +175,7 @@ describe('SuppliersService', () => {
         id: 'sup-1',
         commerce_id: commerceId,
         name: 'Fournisseur Dette',
-        phone: '+22990000000',
+        phone: '+2290190000000',
         outstanding_debt: 10000,
       });
 
@@ -192,7 +192,7 @@ describe('SuppliersService', () => {
         id: 'sup-debt',
         commerce_id: commerceId,
         name: 'Fournisseur Riz',
-        phone: '+22997111111',
+        phone: '+2290197111111',
         outstanding_debt: 50000,
       });
 
@@ -227,7 +227,7 @@ describe('SuppliersService', () => {
                 id: 'sup-debt',
                 commerce_id: commerceId,
                 name: 'Fournisseur Riz',
-                phone: '+22997111111',
+                phone: '+2290197111111',
                 outstanding_debt: 25000,
               }),
             },

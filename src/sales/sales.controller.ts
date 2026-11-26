@@ -25,6 +25,15 @@ export class SalesController {
     return this.salesService.findAll(commerceId, parsedLimit);
   }
 
+  @Get('summary')
+  async getSummary(
+    @CurrentCommerce('id') commerceId: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+  ) {
+    return this.salesService.getSummary(commerceId, { startDate, endDate });
+  }
+
   @Get(':id')
   async findOne(
     @CurrentCommerce('id') commerceId: string,
